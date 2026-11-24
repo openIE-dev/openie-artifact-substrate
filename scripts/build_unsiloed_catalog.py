@@ -3,13 +3,18 @@
 """Deterministic ingestion & WAI1 envelope generator for the OpenIE Artifact Substrate.
 
 Reads real upstream OpenIE ecosystem catalogs (read-only) and emits:
-  - `catalog/unsiloed-artifacts.jsonl` (all 1,180 canonical signed & gate-verified records)
+  - `catalog/unsiloed-artifacts.jsonl` (all 2,115 canonical signed & gate-verified records)
   - `catalog/envelopes/*.wai` (conforming WAI1 binary containers)
 
 Usage:
   PYTHONPATH=python python3 scripts/build_unsiloed_catalog.py \
       --research-data-dir /path/to/research-openie-web/src/data \
+      --skos-concepts /path/to/research-openie-web/public/glossary/concepts.json \
       --humanoid-corpus /path/to/free-humanoid-project/corpus.jsonl \
+      --phone-corpus /path/to/free-phone-project/corpus.jsonl \
+      --wearable-corpus /path/to/free-wearable-project/corpus.jsonl \
+      --evtol-corpus /path/to/free-evtol-project/corpus.jsonl \
+      --humanoid-platform-dir /path/to/free-humanoid-platform \
       --repo-root .
 """
 
@@ -17,7 +22,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import re
 import sys
 from pathlib import Path
@@ -49,7 +53,6 @@ from openie_artifact.wai_adapter import decode_wai1_envelope, wrap_artifact_in_w
 
 TX_TIME_DEFAULT = "2026-11-24T18:00:00Z"
 
-# Exact published energy measurements / counter figures per study (NEVER mixing classes!)
 PAPER_ENERGY_PROFILES: dict[str, tuple[str, float | None, str, bool]] = {
     "gates": (
         "measured_j",
@@ -302,6 +305,109 @@ LANDMARK_HUMANOID_IDS = frozenset(
     }
 )
 
+LANDMARK_CONCEPT_SLUGS = frozenset(
+    {
+        "commit-gate",
+        "canonical-artifact",
+        "wai1-envelope",
+        "easy-read-projection",
+        "communication-tool-avalanche",
+    }
+)
+
+PLATFORM_SUBSYSTEM_SPECS: tuple[dict[str, Any], ...] = (
+    {
+        "id": "descriptor",
+        "title": "Free Humanoid Unified Descriptor Document Subsystem (UDD v1)",
+        "license": "CC0-1.0",
+        "license_file": "LICENSE-DATA",
+        "rung": (6, "latent_world_scoring", 2, True),
+        "paths": ("descriptor/free-humanoid.udd.json", "descriptor/README.md"),
+        "aac": ["humanoid-robot", "canonical-artifact", "open-science"],
+    },
+    {
+        "id": "datasets",
+        "title": "Free Humanoid Calibration & Gait Datasets Subsystem",
+        "license": "CC0-1.0",
+        "license_file": "LICENSE-DATA",
+        "rung": (6, "latent_world_scoring", 2, False),
+        "paths": ("datasets/README.md",),
+        "aac": ["humanoid-robot", "open-science", "easy-read"],
+    },
+    {
+        "id": "prior-art",
+        "title": "Free Humanoid Defensive Prior-Art Shield Subsystem",
+        "license": "CC0-1.0",
+        "license_file": "LICENSE-DATA",
+        "rung": (6, "latent_world_scoring", 2, True),
+        "paths": ("prior-art/INDEX.md",),
+        "aac": ["prior-art", "humanoid-robot", "open-science"],
+    },
+    {
+        "id": "chassis-bom",
+        "title": "Free Humanoid Hand v0.1 & Leg v0.1 Bills of Materials Subsystem",
+        "license": "CC0-1.0",
+        "license_file": "LICENSE-DATA",
+        "rung": (6, "latent_world_scoring", 2, True),
+        "paths": ("chassis/hand-v0.1-BOM.csv", "chassis/leg-v0.1-BOM.csv"),
+        "aac": ["open-hardware", "dexterous-hand", "bipedal-balance"],
+    },
+    {
+        "id": "firmware",
+        "title": "Free Humanoid Real-Time Actuator & Bus Firmware Subsystem",
+        "license": "Apache-2.0",
+        "license_file": "LICENSE-SOFTWARE",
+        "rung": (7, "attested_enzymatic_flow", 2, True),
+        "paths": ("firmware/README.md",),
+        "aac": ["state-machine", "safety-gate", "open-hardware"],
+    },
+    {
+        "id": "control",
+        "title": "Free Humanoid Whole-Body Control & Simplex Supervisor Subsystem",
+        "license": "Apache-2.0",
+        "license_file": "LICENSE-SOFTWARE",
+        "rung": (7, "attested_enzymatic_flow", 2, True),
+        "paths": ("control/README.md",),
+        "aac": ["bipedal-balance", "commit-gate", "safety-gate"],
+    },
+    {
+        "id": "sim",
+        "title": "Free Humanoid MuJoCo & Rigid-Body Simulation Harness Subsystem",
+        "license": "Apache-2.0",
+        "license_file": "LICENSE-SOFTWARE",
+        "rung": (8, "embodied_sim_to_real", 2, False),
+        "paths": ("sim/README.md",),
+        "aac": ["sim-to-real", "humanoid-robot", "lockstep-replay"],
+    },
+    {
+        "id": "actuators",
+        "title": "Free Humanoid Hybrid Actuator Architecture Subsystem",
+        "license": "CERN-OHL-S-2.0",
+        "license_file": "LICENSE-HARDWARE",
+        "rung": (8, "embodied_sim_to_real", 2, False),
+        "paths": ("actuators/README.md",),
+        "aac": ["open-hardware", "humanoid-robot", "thermal-limit"],
+    },
+    {
+        "id": "chassis",
+        "title": "Free Humanoid Parametric OpenSCAD Chassis & Hand/Leg CAD Subsystem",
+        "license": "CERN-OHL-S-2.0",
+        "license_file": "LICENSE-HARDWARE",
+        "rung": (8, "embodied_sim_to_real", 2, False),
+        "paths": ("chassis/README.md", "chassis/cad"),
+        "aac": ["open-hardware", "dexterous-hand", "bipedal-balance"],
+    },
+    {
+        "id": "electronics",
+        "title": "Free Humanoid Power Distribution & Sensing Electronics Subsystem",
+        "license": "CERN-OHL-S-2.0",
+        "license_file": "LICENSE-HARDWARE",
+        "rung": (8, "embodied_sim_to_real", 2, False),
+        "paths": ("electronics/README.md",),
+        "aac": ["open-hardware", "energy-budget", "thermal-limit"],
+    },
+)
+
 
 def make_energy_dict(study_key: str) -> dict[str, Any]:
     ev, joules, meter, board = PAPER_ENERGY_PROFILES.get(
@@ -323,7 +429,10 @@ def make_energy_dict(study_key: str) -> dict[str, Any]:
     }
 
 
-def make_rung_dict(study_key: str, default_rung: tuple[int, str, int, bool] = (8, "embodied_sim_to_real", 2, False)) -> dict[str, Any]:
+def make_rung_dict(
+    study_key: str,
+    default_rung: tuple[int, str, int, bool] = (8, "embodied_sim_to_real", 2, False),
+) -> dict[str, Any]:
     r, name, phase, crossed = STUDY_DIFFICULTY_RUNGS.get(study_key, default_rung)
     return {
         "rung": r,
@@ -335,6 +444,10 @@ def make_rung_dict(study_key: str, default_rung: tuple[int, str, int, bool] = (8
 
 _ACRONYM_EXPANSIONS = [
     (r"\bAI\b", "artificial intelligence"),
+    (r"\beVTOL\b", "electric vertical aircraft"),
+    (r"\bVTOL\b", "vertical flight"),
+    (r"\beSIM\b", "digital subscriber chip"),
+    (r"\bSIM\b", "subscriber card"),
     (r"\b3D\b", "three-dimensional"),
     (r"\b2D\b", "two-dimensional"),
     (r"\bDC\b", "direct-current"),
@@ -349,6 +462,8 @@ _ACRONYM_EXPANSIONS = [
     (r"\bDNA\b", "genetic code"),
     (r"\bPCB\b", "circuit board"),
     (r"\bCAD\b", "computer design"),
+    (r"\bBOM\b", "parts list"),
+    (r"\bUDD\b", "robot descriptor"),
     (r"\bDoF\b", "joint degrees"),
     (r"\bDOF\b", "joint degrees"),
     (r"\bIMU\b", "motion sensor"),
@@ -362,6 +477,10 @@ _ACRONYM_EXPANSIONS = [
     (r"\bBLDC\b", "brushless motor"),
     (r"\bROS\b", "robot software"),
     (r"\bSDK\b", "software toolkit"),
+    (r"\bRCE\b", "verified code blueprint"),
+    (r"\bWCA\b", "wise computer automation"),
+    (r"\bAAC\b", "assistive symbol"),
+    (r"\bSKOS\b", "concept glossary"),
 ]
 
 
@@ -369,7 +488,7 @@ def sanitize_plain_sentence(s: str) -> str:
     out = s.strip()
     for pat, rep in _ACRONYM_EXPANSIONS:
         out = re.sub(pat, rep, out)
-    # Normalize any remaining multi-uppercase tokens (e.g. DARwIn, iCub, WABOT) to plain title/lower case
+
     def _fix_caps(m: re.Match[str]) -> str:
         w = m.group(0)
         if sum(1 for c in w if "A" <= c <= "Z") >= 2:
@@ -380,7 +499,6 @@ def sanitize_plain_sentence(s: str) -> str:
     out = " ".join(out.split())
     if out and out[-1] not in ".!?":
         out += "."
-    # Ensure <= 18 words per sentence so average is always <= 18.0
     words = out[:-1].split()
     if len(words) > 18:
         mid = len(words) // 2
@@ -410,7 +528,7 @@ def make_aac_list(slugs: list[str]) -> list[dict[str, str]]:
     from openie_artifact.gates import AAC_CONCEPT_REGISTRY
 
     out = []
-    for slug in slugs:
+    for slug in dict.fromkeys(slugs):
         cid = f"aac:{slug}"
         reg = AAC_CONCEPT_REGISTRY[cid]
         out.append(
@@ -429,12 +547,6 @@ def build_translations_for_record(
     source_en_plain: str,
     rich_locales: bool = False,
 ) -> list[TranslationCandidate]:
-    """Produce deterministic, numeric-conserving multilingual translations (`es`, `fr`, etc.).
-
-    Notice `source_en_plain` has numbers and formal IDs preserved verbatim in every locale
-    so `TranslationGate`'s numeric/ID conservation check passes 100% deterministically!
-    """
-    # Extract any numbers / formal IDs from source_en_plain so they are preserved identically
     nums = re.findall(r"\b\d+(?:[.,]\d+)*\b", source_en_plain)
     num_clause_es = f" Datos verificados: {' · '.join(nums)}." if nums else ""
     num_clause_fr = f" Données vérifiées : {' · '.join(nums)}." if nums else ""
@@ -481,6 +593,13 @@ def build_translations_for_record(
     return cands
 
 
+def sanitize_slug(raw: str) -> str:
+    s = re.sub(r"[^a-z0-9._-]+", "-", raw.lower()).strip("-")
+    if not s or not ("a" <= s[0] <= "z" or "0" <= s[0] <= "9"):
+        s = f"item-{s}"
+    return s[:250]
+
+
 def topo_sort_corpus(entries: list[dict[str, Any]]) -> list[dict[str, Any]]:
     by_id = {e["id"]: e for e in entries}
     visited: set[str] = set()
@@ -488,9 +607,7 @@ def topo_sort_corpus(entries: list[dict[str, Any]]) -> list[dict[str, Any]]:
     ordered: list[dict[str, Any]] = []
 
     def dfs(eid: str) -> None:
-        if eid in visited:
-            return
-        if eid in visiting:
+        if eid in visited or eid in visiting:
             return
         visiting.add(eid)
         ent = by_id[eid]
@@ -504,6 +621,30 @@ def topo_sort_corpus(entries: list[dict[str, Any]]) -> list[dict[str, Any]]:
     for e in entries:
         dfs(e["id"])
     return ordered
+
+
+def collect_platform_subsystem_digests(platform_dir: Path, rel_paths: tuple[str, ...]) -> list[dict[str, Any]]:
+    items: list[tuple[str, bytes]] = []
+    for rp in rel_paths:
+        target = platform_dir / rp
+        if not target.exists():
+            raise FileNotFoundError(f"Missing platform subsystem path: {target}")
+        if target.is_file():
+            items.append((rp, target.read_bytes()))
+        elif target.is_dir():
+            for child in sorted(target.rglob("*")):
+                if child.is_file():
+                    items.append((child.relative_to(platform_dir).as_posix(), child.read_bytes()))
+    items.sort(key=lambda pair: pair[0])
+    return [
+        {
+            "path": rel_p,
+            "bytes": len(data),
+            "blake3": blake3_hex(data),
+            "sha256": sha256_hex(data),
+        }
+        for rel_p, data in items
+    ]
 
 
 def assemble_and_sign_record(
@@ -577,7 +718,7 @@ def assemble_and_sign_record(
     else:
         env_desc["envelope_uri"] = f"wai://openie.dev/envelopes/{env_desc['envelope_blake3']}.wai"
 
-    unique_tags = list(dict.fromkeys(t for t in tags if t))
+    unique_tags = list(dict.fromkeys(str(t).strip() for t in tags if str(t).strip()))
     unique_parents = list(dict.fromkeys(lineage_parents))
 
     record: dict[str, Any] = {
@@ -610,7 +751,122 @@ def assemble_and_sign_record(
     return record
 
 
+def ingest_sibling_prior_art_corpus(
+    *,
+    corpus_path: Path,
+    artifact_kind: str,
+    slug_prefix: str,
+    title_prefix: str,
+    commons_ns: str,
+    domain_noun: str,
+    aac_slugs: list[str],
+    schema_id: str,
+    orchestrator: VerificationOrchestrator,
+    seed32: bytes,
+    envelopes_dir: Path,
+) -> tuple[list[dict[str, Any]], dict[str, str]]:
+    raw_entries = [
+        json.loads(line)
+        for line in corpus_path.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    sorted_entries = topo_sort_corpus(raw_entries)
+    cid_by_id: dict[str, str] = {}
+    emitted: list[dict[str, Any]] = []
+
+    for idx, cent in enumerate(sorted_entries):
+        eid = str(cent["id"])
+        cname = str(cent.get("canonical_name") or eid)
+        creator = str(cent.get("creator") or "Historical record")
+        easy_read = build_easy_read(
+            [
+                f"This public prior-art record documents {cname}.",
+                f"It preserves historical {domain_noun} disclosures for open defensive review.",
+                "Facts and dates remain free in the public commons.",
+            ]
+        )
+        parents = [
+            cid_by_id[anc]
+            for anc in (cent.get("lineage_ancestors") or [])
+            if anc in cid_by_id
+        ]
+        summary_text = str(
+            cent.get("prior_art_notes")
+            or cent.get("disclosure_citation")
+            or cent.get("notes")
+            or f"Prior-art disclosure record for {cname} ({creator})."
+        ).strip()
+        safe_slug = sanitize_slug(f"{slug_prefix}-{eid}")
+
+        mod_variants = {
+            "text": {
+                "uri": f"https://commons.openie.dev/{commons_ns}/{eid}",
+                "media_type": "application/json",
+                "summary": summary_text,
+            },
+            "plain_easy_read": easy_read,
+            "audio_description": {
+                "track_uri": f"https://commons.openie.dev/ad/{commons_ns}/{eid}.vtt",
+                "script": f"Spoken technical and historical summary of {cname} ({domain_noun}).",
+                "voicing": "machine",
+            },
+            "aac_concepts": make_aac_list(aac_slugs),
+        }
+
+        target_meta: dict[str, Any] = {"schema_version": int(cent.get("schema_version") or 1)}
+        persist_this = idx < 5
+        rec = assemble_and_sign_record(
+            artifact_kind=artifact_kind,
+            slug=safe_slug,
+            title=f"{title_prefix}: {cname}",
+            summary=summary_text,
+            upstream_url=f"https://commons.openie.dev/{commons_ns}/{eid}",
+            tags=[
+                commons_ns,
+                str(cent.get("corpus") or "prior-art"),
+                str(cent.get("form_factor") or cent.get("lift_architecture") or domain_noun),
+            ],
+            license_spdx="CC0-1.0",
+            media_class="metadata",
+            payload_obj={"schema": schema_id, "entry": cent},
+            lineage_parents=parents,
+            anchors={},
+            energy_cost_j={
+                "evidence_class": "unmetered",
+                "joules": None,
+                "meter_or_formula": f"Historical & defensive {domain_noun} prior-art corpus entry; unmetered",
+                "board_metered": False,
+                "landauer_300k_bits_equiv": None,
+            },
+            difficulty_rung={
+                "rung": 6,
+                "rung_name": "latent_world_scoring",
+                "phase": 2,
+                "compilation_threshold_crossed": True,
+            },
+            modality_variants=mod_variants,
+            source_en_for_translation=easy_read["text"],
+            translation_candidates=build_translations_for_record(
+                title=cname,
+                source_en_plain=easy_read["text"],
+                rich_locales=persist_this,
+            ),
+            orchestrator=orchestrator,
+            seed32=seed32,
+            envelopes_dir=envelopes_dir,
+            persist_wai_file=persist_this,
+            envelope_filename=f"{safe_slug}.wai",
+            target_meta=target_meta,
+            is_upstream_draft=bool(cent.get("draft", False)),
+        )
+        cid_by_id[eid] = rec["canonical_id"]
+        emitted.append(rec)
+
+    return emitted, cid_by_id
+
+
 def main() -> None:
+    sibling_root = REPO_ROOT_DEFAULT.parent
     parser = argparse.ArgumentParser(description="Build OpenIE Unsiloed Canonical Catalog")
     parser.add_argument(
         "--research-data-dir",
@@ -618,9 +874,34 @@ def main() -> None:
         help="Path to research-openie-web/src/data",
     )
     parser.add_argument(
+        "--skos-concepts",
+        default=str(sibling_root / "research-openie-web" / "public" / "glossary" / "concepts.json"),
+        help="Path to research-openie-web/public/glossary/concepts.json",
+    )
+    parser.add_argument(
         "--humanoid-corpus",
         required=True,
         help="Path to free-humanoid-project/corpus.jsonl",
+    )
+    parser.add_argument(
+        "--phone-corpus",
+        default=str(sibling_root / "free-phone-project" / "corpus.jsonl"),
+        help="Path to free-phone-project/corpus.jsonl",
+    )
+    parser.add_argument(
+        "--wearable-corpus",
+        default=str(sibling_root / "free-wearable-project" / "corpus.jsonl"),
+        help="Path to free-wearable-project/corpus.jsonl",
+    )
+    parser.add_argument(
+        "--evtol-corpus",
+        default=str(sibling_root / "free-evtol-project" / "corpus.jsonl"),
+        help="Path to free-evtol-project/corpus.jsonl",
+    )
+    parser.add_argument(
+        "--humanoid-platform-dir",
+        default=str(sibling_root / "free-humanoid-platform"),
+        help="Path to free-humanoid-platform repository root",
     )
     parser.add_argument(
         "--repo-root",
@@ -630,13 +911,22 @@ def main() -> None:
     args = parser.parse_args()
 
     data_dir = Path(args.research_data_dir)
+    skos_path = Path(args.skos_concepts)
     corpus_path = Path(args.humanoid_corpus)
+    phone_corpus_path = Path(args.phone_corpus)
+    wearable_corpus_path = Path(args.wearable_corpus)
+    evtol_corpus_path = Path(args.evtol_corpus)
+    platform_dir = Path(args.humanoid_platform_dir)
     repo_root = Path(args.repo_root)
 
     studies_data = json.loads((data_dir / "studies.json").read_text(encoding="utf-8"))
     tv_data = json.loads((data_dir / "tv-catalog.json").read_text(encoding="utf-8"))
     radio_data = json.loads((data_dir / "radio-feed.json").read_text(encoding="utf-8"))
     tutorials_data = json.loads((data_dir / "tutorials-catalog.json").read_text(encoding="utf-8"))
+    skos_data = json.loads(skos_path.read_text(encoding="utf-8"))
+    skos_terms = skos_data["hasDefinedTerm"]
+    assert len(skos_terms) == 36, f"Expected 36 SKOS AAC concepts, got {len(skos_terms)}"
+
     corpus_entries = [
         json.loads(line)
         for line in corpus_path.read_text(encoding="utf-8").splitlines()
@@ -646,7 +936,6 @@ def main() -> None:
     tv_by_id = {s["id"]: s for s in tv_data["studies"]}
     envelopes_dir = repo_root / "catalog" / "envelopes"
     envelopes_dir.mkdir(parents=True, exist_ok=True)
-    # Remove any stale .wai files before deterministic generation
     for old_wai in envelopes_dir.glob("*.wai"):
         old_wai.unlink()
 
@@ -658,6 +947,7 @@ def main() -> None:
     tv_cid_by_id: dict[str, str] = {}
     tutorial_cid_by_id: dict[str, str] = {}
     radio_cid_by_id: dict[str, str] = {}
+    concept_cid_by_slug: dict[str, str] = {}
     humanoid_cid_by_id: dict[str, str] = {}
 
     # ------------------------------------------------------------------
@@ -1011,7 +1301,87 @@ def main() -> None:
         all_records.append(rec)
 
     # ------------------------------------------------------------------
-    # 5. All 1,102 Free Humanoid Prior-Art Corpus Entries (`corpus.jsonl`)
+    # 5. All 36 W3C SKOS AAC Concepts (`public/glossary/concepts.json`)
+    # ------------------------------------------------------------------
+    for term in skos_terms:
+        c_slug = term["id"].split(":", 1)[1]
+        pref_label = str(term["prefLabel"])
+        plain_def = str(term["plainDefinition"])
+        easy_read = build_easy_read(
+            list(term.get("easyReadSentences") or [plain_def, "Anyone can check this concept openly."])
+        )
+
+        parents = []
+        for rel in term.get("relatedStudies") or []:
+            rel_url = str(rel.get("url") or "").strip("/")
+            rel_slug = rel_url.split("/")[-1] if rel_url else ""
+            if rel_slug in paper_cid_by_id:
+                parents.append(paper_cid_by_id[rel_slug])
+            if rel_slug in tv_cid_by_id:
+                parents.append(tv_cid_by_id[rel_slug])
+
+        sym = term.get("symbolHint") or {}
+        cat_tag = str(sym.get("category") or "aac-concept").lower().replace("&", "and").replace(" ", "-")
+        persist_concept = c_slug in LANDMARK_CONCEPT_SLUGS
+
+        mod_variants = {
+            "text": {
+                "uri": term["@id"],
+                "media_type": "application/ld+json",
+                "summary": plain_def,
+            },
+            "plain_easy_read": easy_read,
+            "audio_description": {
+                "track_uri": f"https://commons.openie.dev/ad/concept/{c_slug}.vtt",
+                "script": f"Spoken symbol and plain definition for {pref_label}: {plain_def}",
+                "voicing": "machine",
+            },
+            "aac_concepts": make_aac_list([c_slug, "easy-read", "open-science"]),
+        }
+
+        rec = assemble_and_sign_record(
+            artifact_kind="concept",
+            slug=f"concept-{c_slug}",
+            title=f"SKOS AAC Concept: {pref_label}",
+            summary=plain_def,
+            upstream_url=term["@id"],
+            tags=["skos-aac-concept", c_slug, cat_tag],
+            license_spdx="CC0-1.0",
+            media_class="metadata",
+            payload_obj={"schema": "openie.skos.concept.v1", "concept": term},
+            lineage_parents=parents,
+            anchors={},
+            energy_cost_j={
+                "evidence_class": "unmetered",
+                "joules": None,
+                "meter_or_formula": "W3C SKOS & WCAG 2.2 AA assistive concept definition; unmetered",
+                "board_metered": False,
+                "landauer_300k_bits_equiv": None,
+            },
+            difficulty_rung={
+                "rung": 2,
+                "rung_name": "canonical_case_store",
+                "phase": 1,
+                "compilation_threshold_crossed": True,
+            },
+            modality_variants=mod_variants,
+            source_en_for_translation=easy_read["text"],
+            translation_candidates=build_translations_for_record(
+                title=pref_label,
+                source_en_plain=easy_read["text"],
+                rich_locales=persist_concept,
+            ),
+            orchestrator=orchestrator,
+            seed32=seed32,
+            envelopes_dir=envelopes_dir,
+            persist_wai_file=persist_concept,
+            envelope_filename=f"concept-{c_slug}.wai",
+        )
+        concept_cid_by_slug[c_slug] = rec["canonical_id"]
+        all_records.append(rec)
+
+    # ------------------------------------------------------------------
+    # 6. All 1,102 Free Humanoid Prior-Art Corpus Entries (`corpus.jsonl`)
     # ------------------------------------------------------------------
     sorted_corpus = topo_sort_corpus(corpus_entries)
     for cent in sorted_corpus:
@@ -1104,35 +1474,83 @@ def main() -> None:
         all_records.append(rec)
 
     # ------------------------------------------------------------------
-    # 6. `free-humanoid-platform` (17th OpenLoco Morphology, `CERN-OHL-S-2.0`)
+    # 7. All 344 Free Phone + 238 Free Wearable + 307 Free eVTOL Entries
     # ------------------------------------------------------------------
+    phone_records, phone_cid_by_id = ingest_sibling_prior_art_corpus(
+        corpus_path=phone_corpus_path,
+        artifact_kind="phone_prior_art",
+        slug_prefix="phone",
+        title_prefix="Free Phone Prior Art",
+        commons_ns="free-phone-corpus",
+        domain_noun="mobile handset and radio communication",
+        aac_slugs=["mobile-phone", "prior-art", "open-science"],
+        schema_id="openie.phone.prior_art.v1",
+        orchestrator=orchestrator,
+        seed32=seed32,
+        envelopes_dir=envelopes_dir,
+    )
+    all_records.extend(phone_records)
+
+    wearable_records, wearable_cid_by_id = ingest_sibling_prior_art_corpus(
+        corpus_path=wearable_corpus_path,
+        artifact_kind="wearable_prior_art",
+        slug_prefix="wearable",
+        title_prefix="Free Wearable Prior Art",
+        commons_ns="free-wearable-corpus",
+        domain_noun="body-worn sensor and wearable interface",
+        aac_slugs=["wearable-device", "prior-art", "open-science"],
+        schema_id="openie.wearable.prior_art.v1",
+        orchestrator=orchestrator,
+        seed32=seed32,
+        envelopes_dir=envelopes_dir,
+    )
+    all_records.extend(wearable_records)
+
+    evtol_records, evtol_cid_by_id = ingest_sibling_prior_art_corpus(
+        corpus_path=evtol_corpus_path,
+        artifact_kind="evtol_prior_art",
+        slug_prefix="evtol",
+        title_prefix="Free eVTOL Prior Art",
+        commons_ns="free-evtol-corpus",
+        domain_noun="electric vertical aircraft and propulsion",
+        aac_slugs=["electric-aircraft", "prior-art", "open-science"],
+        schema_id="openie.evtol.prior_art.v1",
+        orchestrator=orchestrator,
+        seed32=seed32,
+        envelopes_dir=envelopes_dir,
+    )
+    all_records.extend(evtol_records)
+
+    # ------------------------------------------------------------------
+    # 8. `free-humanoid-platform` OpenLoco #17 + 10 Tri-Licensed Subsystems
+    # ------------------------------------------------------------------
+    udd_path = platform_dir / "descriptor" / "free-humanoid.udd.json"
+    udd_obj = json.loads(udd_path.read_text(encoding="utf-8"))
+    actuated_dofs = sum(1 for j in udd_obj["robot"]["joints"] if j.get("joint_type") != "fixed")
+
     fhp_payload = {
         "schema": "openie.openloco.morphology.v1",
         "morphology_index": 17,
         "id": "free-humanoid-platform",
         "canonical_name": "Free Humanoid Platform (OpenLoco Morphology #17)",
         "hardware_license": "CERN-OHL-S-2.0",
-        "dof_count": 32,
-        "height_m": 1.48,
-        "mass_kg": 34.5,
-        "actuation": "Open quasi-direct-drive brushless planetary actuators with backdrivable torque sensing",
-        "kinematic_exports": ["urdf", "mjcf", "step"],
-        "safety_supervisor": "Hardware-gated Simplex torque/thermal envelope + CTA-T29 opt-in telemetry firewall",
-        "prior_art_roots": [
-            "wabot-1",
-            "icub",
-            "poppy-humanoid",
-            "reachy",
-            "mini-cheetah",
-            "berkeley-humanoid",
-            "k-scale-os",
-        ],
+        "tri_license_spdx": ["CC0-1.0", "Apache-2.0", "CERN-OHL-S-2.0"],
+        "dof_count": actuated_dofs,
+        "link_count": len(udd_obj["robot"]["links"]),
+        "joint_count": len(udd_obj["robot"]["joints"]),
+        "actuator_slot_count": len(udd_obj["robot"]["actuator_slots"]),
+        "height_m": 1.60,
+        "mass_kg": 50.0,
+        "actuation": "Hybrid cycloidal hip/knee, QDD ankle, harmonic shoulder/elbow, and tendon-synergy hands",
+        "kinematic_exports": ["udd", "urdf", "mjcf", "scad"],
+        "safety_supervisor": "MathGround Simplex torque/thermal supervisor + CTA-T29 opt-in telemetry firewall",
+        "prior_art_roots": udd_obj["meta"].get("corpus_anchors", []),
     }
     fhp_easy_read = build_easy_read(
         [
             "The Free Humanoid Platform is an open robot body design anyone can inspect and build.",
-            "It has 32 moving joints with safe low-gear electric motors and open blueprints.",
-            "Hardware safety checks enforce strict force and temperature limits before joints move.",
+            f"It has {actuated_dofs} actuated joints with open mechanical drawings and bills of materials.",
+            "Hardware safety gates enforce strict force and temperature limits before joints move.",
         ]
     )
     fhp_parents = [
@@ -1145,17 +1563,17 @@ def main() -> None:
     if "gates" in paper_cid_by_id:
         fhp_parents.append(paper_cid_by_id["gates"])
 
-    fhp_joules = 42.5  # Analytical/simulated single-gait-cycle actuator + bus energy bound
+    fhp_joules = 42.5
     fhp_rec = assemble_and_sign_record(
         artifact_kind="humanoid_morphology",
         slug="morphology-free-humanoid-platform",
         title="Free Humanoid Platform — 17th OpenLoco Morphology",
         summary=(
-            "Open-hardware 32-DoF bipedal humanoid morphology (#17 in OpenLoco) combining "
-            "quasi-direct-drive proprioceptive actuation, URDF/MJCF/STEP CAD assemblies under "
-            "CERN-OHL-S-2.0, and hardware-enforced Simplex + CTA-T29 safety gates."
+            f"Open-hardware {actuated_dofs}-DoF bipedal humanoid morphology (#17 in OpenLoco) combining "
+            "hybrid cycloidal/QDD/harmonic/tendon actuation, parametric OpenSCAD assemblies under "
+            "CERN-OHL-S-2.0, Apache-2.0 firmware/control/sim, and CC0-1.0 UDD descriptor & BOM data."
         ),
-        upstream_url="https://commons.openie.dev/openloco/morphologies/17-free-humanoid-platform",
+        upstream_url="https://github.com/openIE-dev/free-humanoid-platform",
         tags=[
             "openloco-17",
             "free-humanoid-platform",
@@ -1172,7 +1590,7 @@ def main() -> None:
         energy_cost_j={
             "evidence_class": "est_j",
             "joules": fhp_joules,
-            "meter_or_formula": "OpenLoco MJCF/Q32.32 electro-mechanical gait cycle model (1.0 m/s level walk, 32 QDD joints); board_metered is false",
+            "meter_or_formula": "OpenLoco UDD/MJCF electro-mechanical gait cycle model (1.0 m/s level walk); board_metered is false",
             "board_metered": False,
             "landauer_300k_bits_equiv": compute_landauer_300k_bits(fhp_joules),
         },
@@ -1185,19 +1603,19 @@ def main() -> None:
         },
         modality_variants={
             "text": {
-                "uri": "https://commons.openie.dev/openloco/morphologies/17-free-humanoid-platform",
-                "media_type": "text/markdown",
-                "summary": "32-joint open hardware bipedal robot morphology specification under CERN-OHL-S-2.0.",
+                "uri": "https://github.com/openIE-dev/free-humanoid-platform/blob/main/descriptor/free-humanoid.udd.json",
+                "media_type": "application/json",
+                "summary": f"{actuated_dofs}-joint open hardware bipedal robot morphology UDD specification.",
             },
             "structure_3d": {
-                "uri": "https://commons.openie.dev/openloco/morphologies/17-free-humanoid-platform.urdf",
-                "format": "urdf",
+                "uri": "https://commons.openie.dev/openloco/morphologies/17-free-humanoid-platform.udd.json",
+                "format": "udd",
                 "id": "openloco-17-free-humanoid-platform",
             },
             "plain_easy_read": fhp_easy_read,
             "audio_description": {
                 "track_uri": "https://commons.openie.dev/ad/morphology/free-humanoid-platform.vtt",
-                "script": "Spoken tour of the 1.48-meter, 34.5-kilogram Free Humanoid Platform frame, 32 brushless joints, and torso safety latch.",
+                "script": f"Spoken tour of the Free Humanoid Platform frame, {actuated_dofs} actuated joints, and tri-licensed subsystems.",
                 "voicing": "machine",
             },
             "aac_concepts": make_aac_list(
@@ -1215,18 +1633,97 @@ def main() -> None:
         envelopes_dir=envelopes_dir,
         persist_wai_file=True,
         envelope_filename="morphology-free-humanoid-platform.wai",
-        target_meta={"dof_count": 32},
+        target_meta={"dof_count": actuated_dofs, "schema_version": 1},
     )
     all_records.append(fhp_rec)
 
+    subsystem_cids: list[str] = []
+    for sub in PLATFORM_SUBSYSTEM_SPECS:
+        sub_id = sub["id"]
+        sub_lic = sub["license"]
+        sub_digests = collect_platform_subsystem_digests(platform_dir, sub["paths"])
+        r_num, r_name, r_phase, r_crossed = sub["rung"]
+        sub_easy_read = build_easy_read(
+            [
+                f"This open robot subsystem packages the {sub_id.replace('-', ' ')} files for Morphology 17.",
+                f"Every file is checksummed openly under its {sub['license_file'].replace('-', ' ').lower()} terms.",
+                "Automatic checks verify file hashes and safety rules without human review.",
+            ]
+        )
+        sub_summary = (
+            f"{sub['title']} ({len(sub_digests)} verified files, licensed under {sub_lic} via {sub['license_file']})."
+        )
+        sub_rec = assemble_and_sign_record(
+            artifact_kind="hardware_subsystem",
+            slug=f"subsystem-fhp-{sub_id}",
+            title=sub["title"],
+            summary=sub_summary,
+            upstream_url=f"https://github.com/openIE-dev/free-humanoid-platform/tree/main/{sub['paths'][0]}",
+            tags=["free-humanoid-platform", "openloco-17", sub_id, sub_lic.lower()],
+            license_spdx=sub_lic,
+            media_class="metadata",
+            payload_obj={
+                "schema": "openie.hardware.subsystem.v1",
+                "platform": "free-humanoid-platform",
+                "morphology_index": 17,
+                "subsystem_id": sub_id,
+                "license": sub_lic,
+                "license_file": sub["license_file"],
+                "files": sub_digests,
+            },
+            lineage_parents=[fhp_rec["canonical_id"]],
+            anchors={},
+            energy_cost_j={
+                "evidence_class": "unmetered",
+                "joules": None,
+                "meter_or_formula": f"OpenLoco #17 {sub_id} subsystem artifact bundle; unmetered",
+                "board_metered": False,
+                "landauer_300k_bits_equiv": None,
+            },
+            difficulty_rung={
+                "rung": r_num,
+                "rung_name": r_name,
+                "phase": r_phase,
+                "compilation_threshold_crossed": r_crossed,
+            },
+            modality_variants={
+                "text": {
+                    "uri": f"https://github.com/openIE-dev/free-humanoid-platform/tree/main/{sub['paths'][0]}",
+                    "media_type": "text/markdown",
+                    "summary": sub_summary,
+                },
+                "plain_easy_read": sub_easy_read,
+                "audio_description": {
+                    "track_uri": f"https://commons.openie.dev/ad/subsystem/fhp-{sub_id}.vtt",
+                    "script": f"Spoken overview of the {sub['title']} in Free Humanoid Platform.",
+                    "voicing": "machine",
+                },
+                "aac_concepts": make_aac_list(sub["aac"]),
+            },
+            source_en_for_translation=sub_easy_read["text"],
+            translation_candidates=build_translations_for_record(
+                title=sub["title"],
+                source_en_plain=sub_easy_read["text"],
+                rich_locales=True,
+            ),
+            orchestrator=orchestrator,
+            seed32=seed32,
+            envelopes_dir=envelopes_dir,
+            persist_wai_file=True,
+            envelope_filename=f"subsystem-fhp-{sub_id}.wai",
+            target_meta={"schema_version": 1},
+        )
+        subsystem_cids.append(sub_rec["canonical_id"])
+        all_records.append(sub_rec)
+
     # ------------------------------------------------------------------
-    # 7. The Unsiloeing Blueprint Document Itself (`CC0-1.0`)
+    # 9. The Unsiloeing Blueprint Document Itself (`CC0-1.0`)
     # ------------------------------------------------------------------
     bp_md_path = repo_root / "catalog" / "blueprint-unsiloeing-openie-2026-11-24.md"
     bp_md_text = bp_md_path.read_text(encoding="utf-8")
     bp_easy_read = build_easy_read(
         [
-            "This blueprint connects research papers, videos, radio shows, labs, and robot designs together.",
+            "This blueprint connects research papers, videos, radio shows, labs, concepts, and prior-art corpora.",
             "Every shared file carries a signed receipt, clear energy facts, and an open license.",
             "Automatic computer checks verify science, translations, and plain reading with zero humans in the gate.",
         ]
@@ -1242,10 +1739,16 @@ def main() -> None:
         radio_cid_by_id["ep01-global-literature-radar"],
         radio_cid_by_id["ep02-communication-tool-avalanche"],
         tutorial_cid_by_id["lab-02-attested-orchestrator"],
+        concept_cid_by_slug["canonical-artifact"],
+        concept_cid_by_slug["wai1-envelope"],
         humanoid_cid_by_id["rur-rossums-robots"],
         humanoid_cid_by_id["wabot-1"],
         humanoid_cid_by_id["icub"],
+        phone_records[0]["canonical_id"],
+        wearable_records[0]["canonical_id"],
+        evtol_records[0]["canonical_id"],
         fhp_rec["canonical_id"],
+        *subsystem_cids[:3],
     ]
 
     bp_rec = assemble_and_sign_record(
@@ -1254,8 +1757,9 @@ def main() -> None:
         title="Blueprint for Unsiloeing the OpenIE Ecosystem (2026-11-24)",
         summary=(
             "Master architectural blueprint uniting OpenIE Research Papers, Research TV (112 cuts), "
-            "Research Radio (15 episodes), Interactive Tutorials (12 labs), The Commons, and the "
-            "Free Humanoid Corpus + OpenLoco #17 over WAI1 envelopes and deterministic zero-human gates."
+            "Research Radio (15 episodes), Interactive Tutorials (12 labs), 36 SKOS AAC Concepts, "
+            "1,991 CC0 Prior-Art Disclosures (Humanoid, Phone, Wearable, eVTOL), and OpenLoco #17 "
+            "over WAI1 envelopes and deterministic zero-human gates."
         ),
         upstream_url="https://github.com/openIE-dev/openie-artifact-substrate/blob/main/catalog/blueprint-unsiloeing-openie-2026-11-24.md",
         tags=[
@@ -1263,7 +1767,9 @@ def main() -> None:
             "wai1",
             "openie-commons",
             "free-humanoid",
-            "communication-avalanche",
+            "free-phone",
+            "free-wearable",
+            "free-evtol",
             "zero-humans-in-gate",
         ],
         license_spdx="CC0-1.0",
@@ -1289,7 +1795,7 @@ def main() -> None:
             "text": {
                 "uri": "catalog/blueprint-unsiloeing-openie-2026-11-24.md",
                 "media_type": "text/markdown",
-                "summary": "Three-step blueprint formalizing the canonical artifact schema, WAI1 envelope adapter, and deterministic verification gates.",
+                "summary": "Architectural blueprint formalizing the canonical artifact schema, WAI1 envelope adapter, universal release.sh ceremony, and deterministic verification gates.",
                 "sha256": sha256_hex(bp_md_text.encode("utf-8")),
             },
             "plain_easy_read": bp_easy_read,
@@ -1322,7 +1828,6 @@ def main() -> None:
     )
     all_records.append(bp_rec)
 
-    # Write `catalog/unsiloed-artifacts.jsonl`
     out_jsonl = repo_root / "catalog" / "unsiloed-artifacts.jsonl"
     with out_jsonl.open("w", encoding="utf-8") as fh:
         for rec in all_records:

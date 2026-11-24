@@ -8,7 +8,7 @@ import re
 from typing import Any
 
 CANONICAL_ID_RE = re.compile(
-    r"^blake3:(paper|tv|radio|tutorial|humanoid_prior_art|humanoid_morphology|blueprint|concept):([0-9a-f]{64})$"
+    r"^blake3:(paper|tv|radio|tutorial|humanoid_prior_art|phone_prior_art|wearable_prior_art|evtol_prior_art|humanoid_morphology|hardware_subsystem|blueprint|concept):([0-9a-f]{64})$"
 )
 HEX64_RE = re.compile(r"^[0-9a-f]{64}$")
 HEX128_RE = re.compile(r"^[0-9a-f]{128}$")
@@ -26,7 +26,11 @@ ALLOWED_KINDS = frozenset(
         "radio",
         "tutorial",
         "humanoid_prior_art",
+        "phone_prior_art",
+        "wearable_prior_art",
+        "evtol_prior_art",
         "humanoid_morphology",
+        "hardware_subsystem",
         "blueprint",
         "concept",
     }
@@ -480,7 +484,7 @@ def validate_openie_artifact(artifact: dict[str, Any]) -> None:
             {"uri", "format", "id"},
             {"uri", "format", "id", "sha256"},
         )
-        if s3["format"] not in {"glb", "urdf", "mjcf", "step", "cutaway_3d"}:
+        if s3["format"] not in {"glb", "urdf", "mjcf", "step", "udd", "scad", "cutaway_3d"}:
             raise SchemaValidationError("structure_3d.format: invalid")
         for k in ("uri", "id"):
             if not isinstance(s3[k], str) or not s3[k]:

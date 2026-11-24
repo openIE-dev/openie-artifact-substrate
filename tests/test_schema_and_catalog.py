@@ -87,7 +87,7 @@ class TestSchemaAndCatalog(unittest.TestCase):
             ln for ln in catalog_path.read_text(encoding="utf-8").splitlines() if ln.strip()
         ]
         records = [json.loads(ln) for ln in lines]
-        self.assertEqual(len(records), 1180)
+        self.assertEqual(len(records), 2115)
 
         counts: dict[str, int] = {}
         tv_cuts_total = 0
@@ -130,8 +130,13 @@ class TestSchemaAndCatalog(unittest.TestCase):
         self.assertEqual(tv_cuts_total, 112)
         self.assertEqual(counts["paper"], 21)
         self.assertEqual(counts["tutorial"], 12)
+        self.assertEqual(counts["concept"], 36)
         self.assertEqual(counts["humanoid_prior_art"], 1102)
+        self.assertEqual(counts["phone_prior_art"], 344)
+        self.assertEqual(counts["wearable_prior_art"], 238)
+        self.assertEqual(counts["evtol_prior_art"], 307)
         self.assertEqual(counts["humanoid_morphology"], 1)
+        self.assertEqual(counts["hardware_subsystem"], 10)
         self.assertEqual(counts["blueprint"], 1)
 
         # Verify every lineage_parents edge points to a canonical_id inside the catalog

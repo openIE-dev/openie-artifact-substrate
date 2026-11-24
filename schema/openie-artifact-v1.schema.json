@@ -18,7 +18,7 @@
   "properties": {
     "canonical_id": {
       "type": "string",
-      "pattern": "^blake3:(paper|tv|radio|tutorial|humanoid_prior_art|humanoid_morphology|blueprint|concept):[0-9a-f]{64}$",
+      "pattern": "^blake3:(paper|tv|radio|tutorial|humanoid_prior_art|phone_prior_art|wearable_prior_art|evtol_prior_art|humanoid_morphology|hardware_subsystem|blueprint|concept):[0-9a-f]{64}$",
       "description": "Content-addressed BLAKE3 canonical identifier scoped by OpenIE artifact domain."
     },
     "artifact_kind": {
@@ -29,7 +29,11 @@
         "radio",
         "tutorial",
         "humanoid_prior_art",
+        "phone_prior_art",
+        "wearable_prior_art",
+        "evtol_prior_art",
         "humanoid_morphology",
+        "hardware_subsystem",
         "blueprint",
         "concept"
       ]
@@ -98,7 +102,7 @@
           "type": "array",
           "items": {
             "type": "string",
-            "pattern": "^blake3:(paper|tv|radio|tutorial|humanoid_prior_art|humanoid_morphology|blueprint|concept):[0-9a-f]{64}$"
+            "pattern": "^blake3:(paper|tv|radio|tutorial|humanoid_prior_art|phone_prior_art|wearable_prior_art|evtol_prior_art|humanoid_morphology|hardware_subsystem|blueprint|concept):[0-9a-f]{64}$"
           },
           "uniqueItems": true
         },
@@ -581,6 +585,8 @@
                 "urdf",
                 "mjcf",
                 "step",
+                "udd",
+                "scad",
                 "cutaway_3d"
               ]
             },

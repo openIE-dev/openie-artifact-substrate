@@ -29,10 +29,15 @@
 | **`tv`** | `28` | All 28 Research TV studies × 4 depth slots = **`112` cuts** (`15s`, `45s`, `90s`, `180s`) | `CC0-1.0` |
 | **`radio`** | `15` | All 15 Research Radio studio broadcasts (`ep01..ep15`) | `CC0-1.0` |
 | **`tutorial`** | `12` | All 12 interactive `Predict -> Break -> Repair -> Verify` labs (`lab-01..lab-12`) | `Apache-2.0` |
+| **`concept`** | `36` | All 36 W3C SKOS & WCAG 2.2 AA AAC Glossary Concepts (`research.openie.dev/glossary/concepts.json`) | `CC0-1.0` |
 | **`humanoid_prior_art`** | `1,102` | Full Free Humanoid Prior-Art Corpus (`R.U.R.` 1920 -> `WABOT-1` -> modern humanoids) | `CC0-1.0` |
-| **`humanoid_morphology`** | `1` | `free-humanoid-platform` (17th OpenLoco 32-DoF bipedal morphology) | `CERN-OHL-S-2.0` |
+| **`phone_prior_art`** | `344` | Full Free Phone Handset & Baseband-Activation Prior-Art Corpus | `CC0-1.0` |
+| **`wearable_prior_art`** | `238` | Full Free Wearable Body-Worn Sensor & Interface Prior-Art Corpus | `CC0-1.0` |
+| **`evtol_prior_art`** | `307` | Full Free eVTOL & Distributed Electric Propulsion Prior-Art Corpus | `CC0-1.0` |
+| **`humanoid_morphology`** | `1` | `free-humanoid-platform` (17th OpenLoco bipedal morphology) | `CERN-OHL-S-2.0` |
+| **`hardware_subsystem`** | `10` | Tri-licensed `free-humanoid-platform` subsystems (`descriptor`, `datasets`, `prior-art`, `chassis-bom`, `firmware`, `control`, `sim`, `actuators`, `chassis`, `electronics`) | `CC0-1.0` / `Apache-2.0` / `CERN-OHL-S-2.0` |
 | **`blueprint`** | `1` | [Blueprint for Unsiloeing the OpenIE Ecosystem](catalog/blueprint-unsiloeing-openie-2026-11-24.md) | `CC0-1.0` |
-| **Total** | **`1,180`** | **88 persisted `.wai` envelopes in `catalog/envelopes/` + full cross-language Rust receipt** | — |
+| **Total** | **`2,115`** | **118 persisted `.wai` envelopes in `catalog/envelopes/` + full cross-language Rust receipt + `./release.sh`** | — |
 
 ---
 
@@ -44,6 +49,7 @@ openie-artifact-substrate/
 ├── LICENSE                                           # Apache-2.0 full text
 ├── LICENSING_HYGIENE.md                              # Tri-tier SPDX policy (CC0-1.0, Apache-2.0, CERN-OHL-S-2.0)
 ├── pyproject.toml                                    # Zero-dependency Python package config
+├── release.sh                                        # Universal OpenIE substrate release ceremony
 ├── schema/
 │   └── openie-artifact-v1.schema.json                # JSON Schema Draft 2020-12
 ├── crates/
@@ -57,11 +63,13 @@ openie-artifact-substrate/
 │   ├── gates.py                                      # Python ScientificGate, TranslationGate, AccessibilityGate
 │   └── schema_validator.py                           # Draft 2020-12 structural & semantic validator
 ├── scripts/
-│   └── build_unsiloed_catalog.py                     # Deterministic ecosystem ingestion & WAI1 packager
+│   ├── build_unsiloed_catalog.py                     # Deterministic ecosystem ingestion & WAI1 packager
+│   ├── emit_substrate_release.py                     # WAI1 release envelope & Ed25519 JWP receipt emitter
+│   └── verify_release.sh                             # Offline release verification script
 ├── tests/                                            # Python unittest / pytest conformance & adversarial suite
 └── catalog/
     ├── blueprint-unsiloeing-openie-2026-11-24.md     # Unsiloeing Blueprint Document (CC0-1.0)
-    ├── unsiloed-artifacts.jsonl                      # 1,180 signed, gate-verified Canonical Artifacts
+    ├── unsiloed-artifacts.jsonl                      # 2,115 signed, gate-verified Canonical Artifacts
     ├── verification-receipt.json                     # Deterministic Rust cross-verification receipt
     └── envelopes/*.wai                               # Conforming WAI1 binary containers
 ```
@@ -74,9 +82,12 @@ openie-artifact-substrate/
 # 1. Run all Rust unit & adversarial tests (0 warnings)
 cargo test --workspace
 
-# 2. Cross-verify all 1,180 Python-signed records & 88 .wai envelopes using the Rust CLI
+# 2. Cross-verify all 2,115 Python-signed records & 118 .wai envelopes using the Rust CLI
 cargo run --release --bin openie_substrate_cli -- .
 
 # 3. Run the Python conformance & adversarial test suite (zero external dependencies)
 PYTHONPATH=python python3 -m unittest discover -s tests -v
+
+# 4. Build deterministic substrate release tarball, WAI1 envelope & Ed25519 JWP receipt
+./release.sh 2026.11.24 --dry-run
 ```

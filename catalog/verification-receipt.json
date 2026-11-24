@@ -3,35 +3,40 @@
   "verifier": "openie_substrate_cli (Rust 1.100.0 + ed25519-dalek 2.2 + blake3 1.8 + ruzstd 0.7)",
   "human_in_gate": false,
   "catalog_file": "catalog/unsiloed-artifacts.jsonl",
-  "catalog_blake3": "d5c748d90be4ae3fa865260e43ed7b8388145109f191e2856a2649d6f08c1ea1",
-  "catalog_sha256": "c581ed6bb7a419f64e8ef302f543e1cf5eb1a02580979642f40f1eb13c817dee",
-  "total_artifacts_verified": 1180,
-  "wai1_binary_envelopes_verified": 88,
+  "catalog_blake3": "90fc0154b8cc786b0f2b80fc04f153aed5fcfa7c1a8aa1b526da0d02c25fef3c",
+  "catalog_sha256": "8d6f14ace4ee3f1ba7ad4ae43926d7f1e443090da46eb1a860541163fe4fc786",
+  "total_artifacts_verified": 2115,
+  "wai1_binary_envelopes_verified": 118,
   "dag_acyclic_and_resolved": true,
   "all_ed25519_signatures_valid": true,
   "all_gates_verified": true,
   "counts_by_kind": {
     "blueprint": 1,
+    "concept": 36,
+    "evtol_prior_art": 307,
+    "hardware_subsystem": 10,
     "humanoid_morphology": 1,
     "humanoid_prior_art": 1102,
     "paper": 21,
+    "phone_prior_art": 344,
     "radio": 15,
     "tutorial": 12,
-    "tv": 28
+    "tv": 28,
+    "wearable_prior_art": 238
   },
   "counts_by_license": {
-    "Apache-2.0": 30,
-    "CC0-1.0": 1149,
-    "CERN-OHL-S-2.0": 1
+    "Apache-2.0": 33,
+    "CC0-1.0": 2078,
+    "CERN-OHL-S-2.0": 4
   },
   "counts_by_energy_evidence_class": {
     "est_j": 3,
     "measured_j": 26,
     "reported_j": 26,
-    "unmetered": 1125
+    "unmetered": 2060
   },
   "counts_by_status": {
-    "draft": 108,
-    "verified": 1072
+    "draft": 150,
+    "verified": 1965
   }
 }
