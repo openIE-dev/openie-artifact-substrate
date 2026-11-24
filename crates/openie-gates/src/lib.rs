@@ -1153,6 +1153,27 @@ impl AccessibilityGate {
             }
         }
 
+        if let Some(sv) = mv.get("short_vertical_9x16") {
+            has_primary = true;
+            let ok = sv
+                .as_object()
+                .map(|o| {
+                    o.get("vtt_uri")
+                        .and_then(|v| v.as_str())
+                        .is_some_and(|s| s.ends_with(".vtt"))
+                        && o.get("resolution")
+                            .and_then(|v| v.as_str())
+                            .is_some_and(|s| s == "1080x1920")
+                        && o.get("fps").and_then(|v| v.as_u64()) == Some(60)
+                        && o.get("safe_zone_verified").and_then(|v| v.as_bool()).is_some()
+                })
+                .unwrap_or(false);
+            if !ok {
+                captions_ok = false;
+                reasons.push("wcag_short_vertical_9x16_invalid_or_missing_vtt".to_string());
+            }
+        }
+
         if !has_primary {
             captions_ok = false;
             reasons.push("wcag_no_primary_modality_present".to_string());
@@ -1474,5 +1495,78 @@ mod tests {
         assert!(bad_rep.unexplained_acronyms.contains(&"RAPL".to_string()));
         assert!(!bad_rep.audio_description_ok);
         assert!(!bad_rep.aac_concepts_resolved);
+    }
+
+    #[test]
+    fn accessibility_gate_validates_syndication_projections_9x16_medium_and_x() {
+        let gate = AccessibilityGate;
+        let syndication_mv = json!({
+            "short_vertical_9x16": {
+                "video_uri": "/media/tv/tiktok/agency-tiktok.mp4",
+                "poster_uri": "/media/tv/posters/agency-poster.jpg",
+                "vtt_uri": "/media/tv/captions/agency-15s.vtt",
+                "resolution": "1080x1920",
+                "fps": 60,
+                "duration_s": 22.3,
+                "safe_zone_verified": true,
+                "sha256": "30222839a829a8835bcd481098e5822034a8e610d3bddf0b8249e6693364ed2e"
+            },
+            "medium_article": {
+                "markdown_uri": "/syndication/medium/agency.md",
+                "canonical_import_uri": "/syndication/medium/agency/",
+                "canonical_source_url": "https://research.openie.dev/papers/agency/",
+                "word_count": 720,
+                "reading_time_min": 4,
+                "license": "CC0-1.0",
+                "x_thread_backlink_slot": "{{X_THREAD_URL}}"
+            },
+            "x_thread": {
+                "bundle_uri": "/syndication/x/agency.json",
+                "post_count": 5,
+                "max_weighted_chars": 264,
+                "card_video_uri": "/media/tv/tiktok/agency-tiktok.mp4",
+                "medium_crosslink_uri": "https://research.openie.dev/syndication/medium/agency/"
+            },
+            "syndication_channels": [
+                {
+                    "ecosystem": "x-medium-bridge",
+                    "direction": "bidirectional",
+                    "protocol": "oauth1a-v2+medium-v1-rss",
+                    "status": "staged"
+                },
+                {
+                    "ecosystem": "tiktok",
+                    "direction": "outbound",
+                    "protocol": "tiktok-content-posting-v2",
+                    "status": "staged"
+                }
+            ],
+            "plain_easy_read": {
+                "text": "An agent aims at a clear goal and stays inside an energy budget.",
+                "bullets": ["Finish the task right before ranking by energy."],
+                "avg_words_per_sentence": 10.5
+            },
+            "audio_description": {
+                "track_uri": "https://commons.openie.dev/ad/tv/agency.vtt",
+                "script": "A golden ridge marks optimal tempo between idle drain and switching waste.",
+                "voicing": "machine"
+            },
+            "aac_concepts": [
+                {
+                    "concept_id": "aac:goal-agent",
+                    "label": "Agent aiming at a goal",
+                    "symbol_anchor_uri": "https://commons.openie.dev/aac/goal-agent"
+                }
+            ]
+        });
+        let rep = gate.evaluate(&syndication_mv, false);
+        assert!(rep.passed, "expected pass: {:?}", rep.failure_reasons);
+        assert!(rep.wcag_22_aa_captions_ok);
+
+        let mut broken_9x16 = syndication_mv.clone();
+        broken_9x16["short_vertical_9x16"]["vtt_uri"] = json!("missing_captions.txt");
+        let bad_rep = gate.evaluate(&broken_9x16, false);
+        assert!(!bad_rep.passed);
+        assert!(!bad_rep.wcag_22_aa_captions_ok);
     }
 }

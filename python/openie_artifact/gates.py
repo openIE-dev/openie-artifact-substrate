@@ -741,6 +741,19 @@ class AccessibilityGate:
                         captions_ok = False
                         reasons.append(f"wcag_video_cut_missing_vtt_or_transcript:{slot}")
 
+        if "short_vertical_9x16" in modality_variants:
+            has_any_primary = True
+            sv = modality_variants["short_vertical_9x16"]
+            if (
+                not isinstance(sv, dict)
+                or not str(sv.get("vtt_uri", "")).endswith(".vtt")
+                or sv.get("resolution") != "1080x1920"
+                or sv.get("fps") != 60
+                or not isinstance(sv.get("safe_zone_verified"), bool)
+            ):
+                captions_ok = False
+                reasons.append("wcag_short_vertical_9x16_invalid_or_missing_vtt")
+
         if not has_any_primary:
             captions_ok = False
             reasons.append("wcag_no_primary_modality_present")

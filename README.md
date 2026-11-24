@@ -62,9 +62,17 @@ openie-artifact-substrate/
 │   ├── wai_adapter.py                                # Strict WAI1 codec & RFC 8878 zstd framing
 │   ├── gates.py                                      # Python ScientificGate, TranslationGate, AccessibilityGate
 │   └── schema_validator.py                           # Draft 2020-12 structural & semantic validator
+├── python/openie_syndicate/
+│   ├── oauth1.py                                     # RFC 5849 OAuth 1.0a HMAC-SHA1 & X weighted 280-char counter
+│   ├── ledger.py                                     # Idempotent BLAKE3 syndication ledger & crosslink resolver
+│   ├── x_medium_bridge.py                            # Bidirectional X <-> Medium essay/thread composer & v2/RSS sync
+│   ├── tiktok_client.py                              # TikTok Content Posting API v2 (PULL_FROM_URL & FILE_UPLOAD)
+│   ├── mirrors.py                                    # Resilient mirrors (Internet Archive IAS3, Mastodon, Bluesky)
+│   └── ecosystem_matrix.py                           # 6-tier outbound/bidirectional/inbound ecosystem matrix
 ├── scripts/
 │   ├── build_unsiloed_catalog.py                     # Deterministic ecosystem ingestion & WAI1 packager
 │   ├── emit_substrate_release.py                     # WAI1 release envelope & Ed25519 JWP receipt emitter
+│   ├── syndicate.py                                  # Deterministic X <-> Medium, TikTok & ecosystem syndication CLI
 │   └── verify_release.sh                             # Offline release verification script
 ├── tests/                                            # Python unittest / pytest conformance & adversarial suite
 └── catalog/

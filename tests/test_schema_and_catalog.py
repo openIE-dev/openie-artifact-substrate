@@ -16,10 +16,16 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 
 # Build privacy scan regex dynamically so the test file itself contains zero literal forbidden tokens
 _PRIV_OCTETS = ["91", "111", "64", "78", "98", "100"]
-_PRIV_PARTS = [f"100\\.{o}\\." for o in _PRIV_OCTETS] + [
-    "".join(chr(c) for c in (100, 99, 104, 97, 114, 108, 111, 116)),
-    "".join(chr(c) for c in (99, 98, 105, 111, 64)),
-]
+_MAC_HOME_PREFIX = "".join(chr(c) for c in (47, 85, 115, 101, 114, 115, 47))
+_PRIV_PARTS = (
+    [r"100\.\d+\.", r"10\.10\."]
+    + [f"100\\.{o}\\." for o in _PRIV_OCTETS]
+    + [
+        "".join(chr(c) for c in (100, 99, 104, 97, 114, 108, 111, 116)),
+        "".join(chr(c) for c in (99, 98, 105, 111, 64)),
+        f"(?-i:{_MAC_HOME_PREFIX})",
+    ]
+)
 FORBIDDEN_PRIVACY_RE = re.compile("|".join(_PRIV_PARTS), re.IGNORECASE)
 
 
@@ -77,6 +83,84 @@ class TestSchemaAndCatalog(unittest.TestCase):
         bad_human["verification_status"]["human_in_gate"] = True
         with self.assertRaises(SchemaValidationError):
             validate_openie_artifact(bad_human)
+
+    def test_schema_accepts_syndication_modality_projections_and_rejects_malformed(self) -> None:
+        catalog_path = REPO_ROOT / "catalog" / "unsiloed-artifacts.jsonl"
+        if not catalog_path.exists():
+            self.skipTest("Catalog not yet generated")
+        first_line = catalog_path.read_text(encoding="utf-8").splitlines()[0]
+        enriched = json.loads(first_line)
+        enriched["modality_variants"]["short_vertical_9x16"] = {
+            "video_uri": "/media/tv/tiktok/agency-tiktok.mp4",
+            "poster_uri": "/media/tv/posters/agency-poster.jpg",
+            "vtt_uri": "/media/tv/captions/agency-15s.vtt",
+            "resolution": "1080x1920",
+            "fps": 60,
+            "duration_s": 22.3,
+            "safe_zone_verified": True,
+            "sha256": "30222839a829a8835bcd481098e5822034a8e610d3bddf0b8249e6693364ed2e",
+        }
+        enriched["modality_variants"]["medium_article"] = {
+            "markdown_uri": "/syndication/medium/agency.md",
+            "canonical_import_uri": "/syndication/medium/agency/",
+            "canonical_source_url": "https://research.openie.dev/papers/agency/",
+            "word_count": 780,
+            "reading_time_min": 4,
+            "license": "CC0-1.0",
+            "x_thread_backlink_slot": "{{X_THREAD_URL}}",
+        }
+        enriched["modality_variants"]["x_thread"] = {
+            "bundle_uri": "/syndication/x/agency.json",
+            "post_count": 5,
+            "max_weighted_chars": 274,
+            "card_video_uri": "/media/tv/tiktok/agency-tiktok.mp4",
+            "medium_crosslink_uri": "https://research.openie.dev/syndication/medium/agency/",
+        }
+        enriched["modality_variants"]["syndication_channels"] = [
+            {
+                "ecosystem": "x-medium",
+                "direction": "bidirectional",
+                "protocol": "oauth1a-v2+medium-v1-rss",
+                "status": "staged",
+            },
+            {
+                "ecosystem": "tiktok",
+                "direction": "outbound",
+                "protocol": "content-posting-api-v2",
+                "status": "staged",
+            },
+            {
+                "ecosystem": "openalex-radar",
+                "direction": "inbound",
+                "protocol": "rest-json",
+                "status": "active",
+            },
+        ]
+        validate_openie_artifact(enriched)
+
+        # Reject >280 weighted chars in x_thread
+        bad_x = json.loads(json.dumps(enriched))
+        bad_x["modality_variants"]["x_thread"]["max_weighted_chars"] = 281
+        with self.assertRaises(SchemaValidationError):
+            validate_openie_artifact(bad_x)
+
+        # Reject non-CC0 license in medium_article
+        bad_med = json.loads(json.dumps(enriched))
+        bad_med["modality_variants"]["medium_article"]["license"] = "CC-BY-4.0"
+        with self.assertRaises(SchemaValidationError):
+            validate_openie_artifact(bad_med)
+
+        # Reject wrong resolution in short_vertical_9x16
+        bad_9x16 = json.loads(json.dumps(enriched))
+        bad_9x16["modality_variants"]["short_vertical_9x16"]["resolution"] = "1920x1080"
+        with self.assertRaises(SchemaValidationError):
+            validate_openie_artifact(bad_9x16)
+
+        # Reject invalid direction in syndication_channels
+        bad_dir = json.loads(json.dumps(enriched))
+        bad_dir["modality_variants"]["syndication_channels"][0]["direction"] = "sideways"
+        with self.assertRaises(SchemaValidationError):
+            validate_openie_artifact(bad_dir)
 
     def test_unsiloed_catalog_completeness_signatures_and_envelopes(self) -> None:
         catalog_path = REPO_ROOT / "catalog" / "unsiloed-artifacts.jsonl"

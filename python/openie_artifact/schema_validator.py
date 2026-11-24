@@ -415,6 +415,10 @@ def validate_openie_artifact(artifact: dict[str, Any]) -> None:
             "audio_description",
             "aac_concepts",
             "multilingual",
+            "short_vertical_9x16",
+            "medium_article",
+            "x_thread",
+            "syndication_channels",
         },
     )
     if "text" in mv:
@@ -563,6 +567,111 @@ def validate_openie_artifact(artifact: dict[str, Any]) -> None:
                     raise SchemaValidationError(f"multilingual.{loc}.{nk}: range error")
             if not isinstance(m_obj["numeric_id_conserved"], bool):
                 raise SchemaValidationError(f"multilingual.{loc}.numeric_id_conserved")
+
+    if "short_vertical_9x16" in mv:
+        sv_keys = {
+            "video_uri",
+            "poster_uri",
+            "vtt_uri",
+            "resolution",
+            "fps",
+            "duration_s",
+            "safe_zone_verified",
+            "sha256",
+        }
+        sv = _check_keys(
+            mv["short_vertical_9x16"],
+            "$.modality_variants.short_vertical_9x16",
+            sv_keys,
+            sv_keys,
+        )
+        for sk in ("video_uri", "poster_uri", "vtt_uri"):
+            if not isinstance(sv[sk], str) or not sv[sk]:
+                raise SchemaValidationError(f"short_vertical_9x16.{sk}: non-empty string")
+        if sv["resolution"] != "1080x1920":
+            raise SchemaValidationError("short_vertical_9x16.resolution: must be '1080x1920'")
+        if not _is_strict_int(sv["fps"]) or sv["fps"] != 60:
+            raise SchemaValidationError("short_vertical_9x16.fps: must be integer 60")
+        if not _is_finite_number(sv["duration_s"]) or float(sv["duration_s"]) <= 0.0:
+            raise SchemaValidationError("short_vertical_9x16.duration_s: must be > 0")
+        if not isinstance(sv["safe_zone_verified"], bool):
+            raise SchemaValidationError("short_vertical_9x16.safe_zone_verified: must be boolean")
+        if not isinstance(sv["sha256"], str) or not HEX64_RE.match(sv["sha256"]):
+            raise SchemaValidationError("short_vertical_9x16.sha256: invalid 64-hex")
+
+    if "medium_article" in mv:
+        ma_keys = {
+            "markdown_uri",
+            "canonical_import_uri",
+            "canonical_source_url",
+            "word_count",
+            "reading_time_min",
+            "license",
+            "x_thread_backlink_slot",
+        }
+        ma = _check_keys(
+            mv["medium_article"],
+            "$.modality_variants.medium_article",
+            ma_keys,
+            ma_keys,
+        )
+        for sk in (
+            "markdown_uri",
+            "canonical_import_uri",
+            "canonical_source_url",
+            "x_thread_backlink_slot",
+        ):
+            if not isinstance(ma[sk], str) or not ma[sk]:
+                raise SchemaValidationError(f"medium_article.{sk}: non-empty string")
+        for ik in ("word_count", "reading_time_min"):
+            if not _is_strict_int(ma[ik]) or ma[ik] < 1:
+                raise SchemaValidationError(f"medium_article.{ik}: must be integer >= 1")
+        if ma["license"] != "CC0-1.0":
+            raise SchemaValidationError("medium_article.license: must be 'CC0-1.0'")
+
+    if "x_thread" in mv:
+        xt_keys = {
+            "bundle_uri",
+            "post_count",
+            "max_weighted_chars",
+            "card_video_uri",
+            "medium_crosslink_uri",
+        }
+        xt = _check_keys(
+            mv["x_thread"],
+            "$.modality_variants.x_thread",
+            xt_keys,
+            xt_keys,
+        )
+        for sk in ("bundle_uri", "card_video_uri", "medium_crosslink_uri"):
+            if not isinstance(xt[sk], str) or not xt[sk]:
+                raise SchemaValidationError(f"x_thread.{sk}: non-empty string")
+        if not _is_strict_int(xt["post_count"]) or xt["post_count"] < 1:
+            raise SchemaValidationError("x_thread.post_count: must be integer >= 1")
+        if not _is_strict_int(xt["max_weighted_chars"]) or not (1 <= xt["max_weighted_chars"] <= 280):
+            raise SchemaValidationError("x_thread.max_weighted_chars: must be integer 1..280")
+
+    if "syndication_channels" in mv:
+        sc_list = mv["syndication_channels"]
+        if not isinstance(sc_list, list):
+            raise SchemaValidationError("syndication_channels: must be array")
+        sc_keys = {"ecosystem", "direction", "protocol", "status"}
+        for idx, item in enumerate(sc_list):
+            sc = _check_keys(
+                item,
+                f"$.modality_variants.syndication_channels[{idx}]",
+                sc_keys,
+                sc_keys,
+            )
+            for sk in ("ecosystem", "protocol", "status"):
+                if not isinstance(sc[sk], str) or not sc[sk]:
+                    raise SchemaValidationError(
+                        f"syndication_channels[{idx}].{sk}: non-empty string"
+                    )
+            if sc["direction"] not in {"outbound", "inbound", "bidirectional"}:
+                raise SchemaValidationError(
+                    f"syndication_channels[{idx}].direction: invalid {sc['direction']!r}"
+                )
 
     # 6. license
     if artifact["license"] not in ALLOWED_LICENSES:
