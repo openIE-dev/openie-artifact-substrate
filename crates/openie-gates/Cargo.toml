@@ -1,0 +1,13 @@
+[package]
+name = "openie-gates"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "Deterministic Verification Gate Library (ScientificGate, TranslationGate, AccessibilityGate — Zero Humans in the Gates)"
+
+[dependencies]
+blake3.workspace = true
+serde.workspace = true
+serde_json.workspace = true

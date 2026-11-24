@@ -1,0 +1,37 @@
+{
+  "schema": "openie.substrate.verification_receipt.v1",
+  "verifier": "openie_substrate_cli (Rust 1.100.0 + ed25519-dalek 2.2 + blake3 1.8 + ruzstd 0.7)",
+  "human_in_gate": false,
+  "catalog_file": "catalog/unsiloed-artifacts.jsonl",
+  "catalog_blake3": "d5c748d90be4ae3fa865260e43ed7b8388145109f191e2856a2649d6f08c1ea1",
+  "catalog_sha256": "c581ed6bb7a419f64e8ef302f543e1cf5eb1a02580979642f40f1eb13c817dee",
+  "total_artifacts_verified": 1180,
+  "wai1_binary_envelopes_verified": 88,
+  "dag_acyclic_and_resolved": true,
+  "all_ed25519_signatures_valid": true,
+  "all_gates_verified": true,
+  "counts_by_kind": {
+    "blueprint": 1,
+    "humanoid_morphology": 1,
+    "humanoid_prior_art": 1102,
+    "paper": 21,
+    "radio": 15,
+    "tutorial": 12,
+    "tv": 28
+  },
+  "counts_by_license": {
+    "Apache-2.0": 30,
+    "CC0-1.0": 1149,
+    "CERN-OHL-S-2.0": 1
+  },
+  "counts_by_energy_evidence_class": {
+    "est_j": 3,
+    "measured_j": 26,
+    "reported_j": 26,
+    "unmetered": 1125
+  },
+  "counts_by_status": {
+    "draft": 108,
+    "verified": 1072
+  }
+}

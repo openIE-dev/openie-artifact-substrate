@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "openie-artifact"
+version = "0.1.0"
+description = "Canonical OpenIE Artifact Substrate, WAI1 Envelope Adapter, and Deterministic Verification Gate Library"
+readme = "README.md"
+license = { text = "Apache-2.0" }
+requires-python = ">=3.11"
+authors = [
+    { name = "Open Interface Engineering", email = "opensource@openie.dev" }
+]
+dependencies = []
+
+[tool.setuptools.packages.find]
+where = ["python"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["python"]

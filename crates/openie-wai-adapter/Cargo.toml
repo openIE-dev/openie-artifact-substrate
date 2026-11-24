@@ -1,0 +1,22 @@
+[package]
+name = "openie-wai-adapter"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "Conforming WAI1 Envelope Adapter and Canonical OpenIE Artifact Substrate (BLAKE3 + Ed25519)"
+
+[dependencies]
+blake3.workspace = true
+ed25519-dalek.workspace = true
+sha2.workspace = true
+hex.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+ruzstd.workspace = true
+openie-gates = { path = "../openie-gates" }
+
+[[bin]]
+name = "openie_substrate_cli"
+path = "src/bin/openie_substrate_cli.rs"
