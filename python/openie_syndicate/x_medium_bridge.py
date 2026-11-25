@@ -1040,9 +1040,36 @@ class MediumClient:
 
 _HTML_TAG_RE = re.compile(r"<[^>]+>")
 _CANONICAL_OPENIE_RE = re.compile(
-    r"https://(?:blog\.openie\.dev/posts|research\.openie\.dev/(?:papers|products|syndication/medium))/[a-z0-9_-]+/?",
+    r"https://(?:blog\.openie\.dev/(?:posts|medium)|research\.openie\.dev/(?:papers|products|syndication/medium))/[a-z0-9_-]+/?",
     re.IGNORECASE,
 )
+_BLOG_MEDIUM_IMPORT_RE = re.compile(
+    r"^https://blog\.openie\.dev/medium/([a-z0-9_-]+)/?$",
+    re.IGNORECASE,
+)
+_OPENIE_SLUG_RE = re.compile(
+    r"^https://(?:blog\.openie\.dev/(?:posts|medium)|research\.openie\.dev/(?:papers|products|syndication/medium))/([a-z0-9_-]+)/?$",
+    re.IGNORECASE,
+)
+
+
+def _normalize_canonical_openie_url(url: str) -> str:
+    """Normalize OpenIE canonical URLs, mapping `/medium/<slug>/` -> `/posts/<slug>/`."""
+    cleaned = url.strip()
+    m_med = _BLOG_MEDIUM_IMPORT_RE.match(cleaned)
+    if m_med:
+        return f"https://blog.openie.dev/posts/{m_med.group(1).lower()}/"
+    if not cleaned.endswith("/"):
+        cleaned += "/"
+    return cleaned
+
+
+def _extract_openie_slug(url: str | None) -> str | None:
+    """Extract the canonical Chronicle slug (`57` entries) from any matched OpenIE URL."""
+    if not url:
+        return None
+    m = _OPENIE_SLUG_RE.match(url.strip())
+    return m.group(1).lower() if m else None
 
 
 def _strip_html_to_plain(html_fragment: str) -> str:
@@ -1080,9 +1107,9 @@ def parse_medium_rss_xml(xml_text: str) -> list[dict[str, Any]]:
         )
         plain_body = _strip_html_to_plain(encoded_html)
         m_canon = _CANONICAL_OPENIE_RE.search(encoded_html)
-        canonical_openie_url = m_canon.group(0) if m_canon else None
-        if canonical_openie_url and not canonical_openie_url.endswith("/"):
-            canonical_openie_url += "/"
+        canonical_openie_url = (
+            _normalize_canonical_openie_url(m_canon.group(0)) if m_canon else None
+        )
 
         items_out.append(
             {
@@ -1165,6 +1192,7 @@ def sync_medium_rss_to_x(
     ledger: SyndicationLedger,
     x_bundles_by_paper_url: dict[str, dict[str, Any]] | None = None,
     x_bundles_by_title: dict[str, dict[str, Any]] | None = None,
+    chronicle_slugs_by_title: dict[str, str] | None = None,
     video_bytes_loader: Callable[[str], bytes | None] | None = None,
     x_client: XClient | None = None,
     transport: HTTPTransport | None = None,
@@ -1188,6 +1216,11 @@ def sync_medium_rss_to_x(
     items = parse_medium_rss_xml(xml_text)
     canonical_map = x_bundles_by_paper_url or {}
     title_map = {k.strip().lower(): v for k, v in (x_bundles_by_title or {}).items()}
+    chronicle_title_map = {
+        k.strip().lower(): str(v).strip().lower()
+        for k, v in (chronicle_slugs_by_title or {}).items()
+        if k.strip() and str(v).strip()
+    }
     results: list[dict[str, Any]] = []
 
     for item in items:
@@ -1199,18 +1232,31 @@ def sync_medium_rss_to_x(
             }
         )
         item_key = item["guid"] or item["link"]
+        canon_url = item.get("canonical_openie_url")
+        norm_title = str(item.get("title", "")).strip().lower()
+
+        pre_matched_slug = _extract_openie_slug(canon_url)
+        if not pre_matched_slug and norm_title:
+            if norm_title in title_map:
+                pre_matched_slug = str(title_map[norm_title]["study_id"])
+            elif norm_title in chronicle_title_map:
+                pre_matched_slug = chronicle_title_map[norm_title]
+        matched_slug_or_guid = pre_matched_slug or item_key
+        if item.get("link"):
+            ledger.medium_live_urls[matched_slug_or_guid] = str(item["link"])
+
         if ledger.is_duplicate("reverse_medium_to_x", item_key, item_digest):
             results.append(
                 {
                     "guid": item_key,
+                    "matched_slug": pre_matched_slug,
+                    "medium_url": item.get("link"),
                     "status": "skipped_duplicate",
                     "content_blake3": item_digest,
                 }
             )
             continue
 
-        canon_url = item.get("canonical_openie_url")
-        norm_title = str(item.get("title", "")).strip().lower()
         if canon_url and canon_url in canonical_map:
             thread_bundle = update_x_bundle_medium_url(
                 canonical_map[canon_url], str(item["link"])
@@ -1224,6 +1270,11 @@ def sync_medium_rss_to_x(
         else:
             thread_bundle = synthesize_standalone_x_thread_from_medium_item(item)
             matched_study = None
+
+        matched_slug = matched_study or pre_matched_slug
+        resolved_ledger_slug = matched_slug or item_key
+        if item.get("link"):
+            ledger.medium_live_urls[resolved_ledger_slug] = str(item["link"])
 
         tweet_ids: list[str] = []
         status_label = "staged"
@@ -1252,6 +1303,7 @@ def sync_medium_rss_to_x(
             metadata={
                 "medium_url": item["link"],
                 "matched_study_id": matched_study,
+                "matched_slug": matched_slug,
                 "post_count": thread_bundle["post_count"],
             },
         )
@@ -1259,6 +1311,8 @@ def sync_medium_rss_to_x(
             {
                 "guid": item_key,
                 "matched_study_id": matched_study,
+                "matched_slug": matched_slug,
+                "medium_url": item["link"],
                 "status": status_label,
                 "content_blake3": item_digest,
                 "thread_bundle": thread_bundle,
@@ -1323,9 +1377,7 @@ def compile_x_thread_to_medium_essay(thread: Sequence[dict[str, Any]]) -> dict[s
     for post in thread:
         m = _CANONICAL_OPENIE_RE.search(str(post.get("text", "")))
         if m:
-            discovered_openie_url = m.group(0)
-            if not discovered_openie_url.endswith("/"):
-                discovered_openie_url += "/"
+            discovered_openie_url = _normalize_canonical_openie_url(m.group(0))
             break
 
     canonical_url = discovered_openie_url or root_x_url

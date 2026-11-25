@@ -496,12 +496,26 @@ def main(argv: list[str] | None = None) -> int:
         help="Path to unsiloed-artifacts.jsonl",
     )
     parser.add_argument("--web-root", type=Path, help="Path to research-openie-web root")
+    parser.add_argument(
+        "--blog-root",
+        type=Path,
+        default=Path(os.environ["OPENIE_BLOG_ROOT"]) if os.environ.get("OPENIE_BLOG_ROOT") else None,
+        help="Optional path to blog-openie-web root for 57-entry Chronicle title-to-slug matching",
+    )
     parser.add_argument("--study-id", type=str, help="Study ID for --mode publish")
     parser.add_argument(
         "--ledger",
         type=Path,
         default=Path("syndication-ledger.json"),
         help="Path to idempotent BLAKE3 syndication ledger JSON",
+    )
+    parser.add_argument(
+        "--medium-status-out",
+        type=Path,
+        default=Path(os.environ["MEDIUM_LIVE_STATUS_OUT"])
+        if os.environ.get("MEDIUM_LIVE_STATUS_OUT")
+        else None,
+        help="Optional JSON path (e.g. medium-live-status.json) for Medium-First live URL status",
     )
     parser.add_argument(
         "--rss-url",
@@ -565,6 +579,7 @@ def main(argv: list[str] | None = None) -> int:
         ledger = SyndicationLedger.load(args.ledger)
         by_paper: dict[str, dict[str, Any]] = {}
         by_title: dict[str, dict[str, Any]] = {}
+        chronicle_slugs_by_title: dict[str, str] = {}
         if args.web_root:
             cat_file = args.web_root / "src" / "data" / "syndication-catalog.json"
             x_dir = args.web_root / "public" / "syndication" / "x"
@@ -583,9 +598,29 @@ def main(argv: list[str] | None = None) -> int:
                         if prim:
                             by_paper[prim if prim.endswith("/") else f"{prim}/"] = xb
                         by_paper[f"https://blog.openie.dev/posts/{st['id']}/"] = xb
+                        by_paper[f"https://blog.openie.dev/medium/{st['id']}/"] = xb
                         by_paper[f"https://research.openie.dev/syndication/medium/{st['id']}/"] = xb
                         by_title[str(st.get("title", "")).strip().lower()] = xb
                         by_title[str(st.get("short_title", "")).strip().lower()] = xb
+                    chronicle_slugs_by_title[str(st.get("title", "")).strip().lower()] = str(st["id"])
+                    if st.get("short_title"):
+                        chronicle_slugs_by_title[str(st["short_title"]).strip().lower()] = str(st["id"])
+
+        if args.blog_root:
+            posts_dir = args.blog_root / "src" / "content" / "posts"
+            if posts_dir.is_dir():
+                for md_file in sorted(posts_dir.glob("*.md")):
+                    slug = md_file.stem.strip().lower()
+                    for ln in md_file.read_text(encoding="utf-8").splitlines()[:40]:
+                        if ln.startswith("title:"):
+                            raw_t = ln.split(":", 1)[1].strip()
+                            if (raw_t.startswith('"') and raw_t.endswith('"')) or (
+                                raw_t.startswith("'") and raw_t.endswith("'")
+                            ):
+                                raw_t = raw_t[1:-1].replace('\\"', '"')
+                            if raw_t.strip():
+                                chronicle_slugs_by_title[raw_t.strip().lower()] = slug
+                            break
 
         def _load_video_bytes(card_uri: str) -> bytes | None:
             if not args.web_root:
@@ -601,12 +636,29 @@ def main(argv: list[str] | None = None) -> int:
                 ledger=ledger,
                 x_bundles_by_paper_url=by_paper,
                 x_bundles_by_title=by_title,
+                chronicle_slugs_by_title=chronicle_slugs_by_title,
                 video_bytes_loader=_load_video_bytes,
                 x_client=x_probe,
                 dry_run=dry_run,
             )
             all_res.extend(res)
         ledger.save(args.ledger)
+        sorted_medium_live = dict(sorted(ledger.medium_live_urls.items()))
+        if args.medium_status_out:
+            args.medium_status_out.parent.mkdir(parents=True, exist_ok=True)
+            status_payload = {
+                "schema": "openie.medium_live_status.v1",
+                "feeds_polled": feed_urls,
+                "mode": "medium_first_ledger" if dry_run else "medium_and_x_live",
+                "dry_run": dry_run,
+                "live_medium_count": len(sorted_medium_live),
+                "medium_live_urls": sorted_medium_live,
+                "ledger_blake3": ledger.ledger_blake3(),
+            }
+            args.medium_status_out.write_text(
+                json.dumps(status_payload, indent=2, ensure_ascii=False) + "\n",
+                encoding="utf-8",
+            )
         if args.outbox:
             args.outbox.parent.mkdir(parents=True, exist_ok=True)
             args.outbox.write_text(json.dumps(all_res, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
@@ -616,6 +668,8 @@ def main(argv: list[str] | None = None) -> int:
                     "feeds_polled": feed_urls,
                     "items_processed": len(all_res),
                     "new_threads": sum(1 for r in all_res if r.get("status") != "skipped_duplicate"),
+                    "live_medium_count": len(sorted_medium_live),
+                    "medium_live_urls": sorted_medium_live,
                     "dry_run": dry_run,
                 },
                 indent=2,

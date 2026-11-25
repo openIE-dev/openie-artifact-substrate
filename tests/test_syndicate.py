@@ -327,6 +327,80 @@ class TestBidirectionalXMediumAndTikTok(unittest.TestCase):
             dry_run=True,
         )
         self.assertTrue(all(r["status"] == "skipped_duplicate" for r in second_run))
+        # Medium-first live URL tracking works even when dry_run=True (zero X credentials)
+        self.assertEqual(
+            ledger.medium_live_urls["gates"],
+            "https://medium.com/@openie/metered-commit-gates-abc123",
+        )
+        self.assertEqual(
+            ledger.medium_live_urls["https://medium.com/p/def456"],
+            "https://medium.com/@openie/standalone-joule-note-def456",
+        )
+
+    def test_medium_first_57_chronicle_slug_matching_and_medium_url_normalization(self) -> None:
+        rss_xml = """<?xml version="1.0" encoding="UTF-8"?>
+        <rss version="2.0" xmlns:content="http://purl.org/rss/1.0/modules/content/">
+          <channel>
+            <title>Open Interface Engineering on Medium</title>
+            <item>
+              <title>The Hidden Energy Crisis at Every Interface</title>
+              <link>https://medium.com/open-interface-engineering/the-hidden-energy-crisis-111aaa?source=rss-pub</link>
+              <guid isPermaLink="false">https://medium.com/p/111aaa</guid>
+              <category>energy-efficiency</category>
+              <content:encoded><![CDATA[<p>Imported via https://blog.openie.dev/medium/the-hidden-energy-crisis-at-every-interface</p>]]></content:encoded>
+            </item>
+            <item>
+              <title>Bounded Entropy in Formal Languages: A Mathematical Foundation for Deterministic Code Generation</title>
+              <link>https://medium.com/open-interface-engineering/bounded-entropy-222bbb?source=rss-pub</link>
+              <guid isPermaLink="false">https://medium.com/p/222bbb</guid>
+              <category>whitepaper</category>
+              <content:encoded><![CDATA[<p>Canonical OpenIE Chronicle Entry: https://blog.openie.dev/posts/wp-bounded-entropy-code-generation/</p>]]></content:encoded>
+            </item>
+            <item>
+              <title>Every Query Has a Cost in Joules</title>
+              <link>https://medium.com/@openie/every-query-has-a-cost-in-joules-333ccc</link>
+              <guid isPermaLink="false">https://medium.com/p/333ccc</guid>
+              <category>databases</category>
+              <content:encoded><![CDATA[<p>Every database operation is a physical event.</p>]]></content:encoded>
+            </item>
+          </channel>
+        </rss>"""
+
+        parsed = parse_medium_rss_xml(rss_xml)
+        self.assertEqual(len(parsed), 3)
+        # /medium/<slug> must normalize cleanly to /posts/<slug>/!
+        self.assertEqual(
+            parsed[0]["canonical_openie_url"],
+            "https://blog.openie.dev/posts/the-hidden-energy-crisis-at-every-interface/",
+        )
+        self.assertEqual(
+            parsed[1]["canonical_openie_url"],
+            "https://blog.openie.dev/posts/wp-bounded-entropy-code-generation/",
+        )
+        self.assertIsNone(parsed[2]["canonical_openie_url"])
+
+        ledger = SyndicationLedger()
+        out = sync_medium_rss_to_x(
+            rss_xml,
+            ledger=ledger,
+            chronicle_slugs_by_title={
+                "every query has a cost in joules": "every-query-has-a-cost-in-joules"
+            },
+            dry_run=True,
+        )
+        self.assertEqual(len(out), 3)
+        self.assertEqual(
+            ledger.medium_live_urls["the-hidden-energy-crisis-at-every-interface"],
+            "https://medium.com/open-interface-engineering/the-hidden-energy-crisis-111aaa",
+        )
+        self.assertEqual(
+            ledger.medium_live_urls["wp-bounded-entropy-code-generation"],
+            "https://medium.com/open-interface-engineering/bounded-entropy-222bbb",
+        )
+        self.assertEqual(
+            ledger.medium_live_urls["every-query-has-a-cost-in-joules"],
+            "https://medium.com/@openie/every-query-has-a-cost-in-joules-333ccc",
+        )
 
     def test_reverse_flow_2_x_threads_to_medium_and_root_reply(self) -> None:
         timeline = [
