@@ -572,6 +572,91 @@ class TestBidirectionalXMediumAndTikTok(unittest.TestCase):
             reloaded = SyndicationLedger.load(p)
             self.assertEqual(reloaded.ledger_blake3(), ledger.ledger_blake3())
 
+    def test_push_medium_status_r2_graceful_skip_sha256_stamp_and_force(self) -> None:
+        import importlib.util
+
+        script_path = Path(__file__).resolve().parent.parent / "scripts" / "push_medium_status_r2.py"
+        spec = importlib.util.spec_from_file_location("push_medium_status_r2", script_path)
+        assert spec is not None and spec.loader is not None
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            status_p = Path(tmp) / "medium-live-status.json"
+            stamp_p = Path(tmp) / ".last_r2_pushed_sha256"
+            status_p.write_text(
+                json.dumps(
+                    {
+                        "schema": "openie.medium_live_status.v1",
+                        "feeds_polled": ["https://medium.com/feed/open-interface-engineering"],
+                        "mode": "medium_first_ledger",
+                        "dry_run": True,
+                        "live_medium_count": 1,
+                        "medium_live_urls": {
+                            "deterministic-null": "https://medium.com/open-interface-engineering/deterministic-null-123"
+                        },
+                        "ledger_blake3": "a" * 64,
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            # 1. Absent CF_API_TOKEN exits gracefully without network call
+            no_tok = mod.push_medium_status_to_r2(
+                status_path=status_p,
+                stamp_path=stamp_p,
+                cf_api_token="",
+            )
+            self.assertEqual(no_tok["status"], "skipped_no_token")
+
+            # 2. First PUT uploads with application/json; charset=utf-8 and writes SHA-256 stamp
+            put_calls: list[tuple[str, str, dict[str, str], bytes]] = []
+
+            def fake_put(
+                method: str, url: str, headers: dict[str, str], body: bytes
+            ) -> tuple[int, bytes]:
+                put_calls.append((method, url, headers, body))
+                return 200, b'{"success":true}'
+
+            r_up = mod.push_medium_status_to_r2(
+                status_path=status_p,
+                stamp_path=stamp_p,
+                cf_api_token="cf_test_token",
+                transport=fake_put,
+            )
+            self.assertEqual(r_up["status"], "uploaded")
+            self.assertEqual(len(put_calls), 1)
+            self.assertEqual(put_calls[0][0], "PUT")
+            self.assertEqual(
+                put_calls[0][2]["Content-Type"], "application/json; charset=utf-8"
+            )
+            self.assertIn(
+                "r2/buckets/openie-edge-sites/objects/sites/blog-openie-web/syndication/medium-live-status.json",
+                put_calls[0][1],
+            )
+
+            # 3. Second call with unchanged bytes skips R2 PUT
+            r_skip = mod.push_medium_status_to_r2(
+                status_path=status_p,
+                stamp_path=stamp_p,
+                cf_api_token="cf_test_token",
+                transport=fake_put,
+            )
+            self.assertEqual(r_skip["status"], "skipped_unchanged")
+            self.assertEqual(len(put_calls), 1)
+
+            # 4. --force overrides unchanged stamp and uploads again
+            r_force = mod.push_medium_status_to_r2(
+                status_path=status_p,
+                stamp_path=stamp_p,
+                cf_api_token="cf_test_token",
+                force=True,
+                transport=fake_put,
+            )
+            self.assertEqual(r_force["status"], "uploaded")
+            self.assertEqual(len(put_calls), 2)
+
 
 if __name__ == "__main__":
     unittest.main()
