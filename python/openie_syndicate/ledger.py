@@ -13,6 +13,12 @@ from openie_artifact.crypto import blake3_hex, canonical_jcs_bytes
 
 DEFAULT_TX_UTC = "2026-11-24T18:00:00Z"
 X_BACKLINK_PLACEHOLDER = "{{X_THREAD_URL}}"
+DEFAULT_MEDIUM_PUBLICATION_URL = "https://medium.com/open-interface-engineering"
+DEFAULT_MEDIUM_PROFILE_URL = "https://medium.com/@openie"
+DEFAULT_MEDIUM_RSS_FEEDS: tuple[str, ...] = (
+    "https://medium.com/feed/open-interface-engineering",
+    "https://medium.com/feed/@openie",
+)
 
 
 def compute_bundle_blake3(payload: dict[str, Any] | str | bytes) -> str:

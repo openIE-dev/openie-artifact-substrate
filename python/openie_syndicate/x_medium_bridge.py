@@ -1163,6 +1163,8 @@ def sync_medium_rss_to_x(
     *,
     ledger: SyndicationLedger,
     x_bundles_by_paper_url: dict[str, dict[str, Any]] | None = None,
+    x_bundles_by_title: dict[str, dict[str, Any]] | None = None,
+    video_bytes_loader: Callable[[str], bytes | None] | None = None,
     x_client: XClient | None = None,
     transport: HTTPTransport | None = None,
     dry_run: bool = True,
@@ -1175,7 +1177,7 @@ def sync_medium_rss_to_x(
         status, _, raw = http_fn(
             "GET",
             rss_source,
-            {"User-Agent": "OpenIE-Syndicate/1.0 (+https://research.openie.dev)"},
+            {"User-Agent": "Mozilla/5.0 (compatible; OpenIE-Syndicate/1.0; +https://research.openie.dev)"},
             None,
         )
         if status < 200 or status >= 300:
@@ -1184,6 +1186,7 @@ def sync_medium_rss_to_x(
 
     items = parse_medium_rss_xml(xml_text)
     canonical_map = x_bundles_by_paper_url or {}
+    title_map = {k.strip().lower(): v for k, v in (x_bundles_by_title or {}).items()}
     results: list[dict[str, Any]] = []
 
     for item in items:
@@ -1206,9 +1209,15 @@ def sync_medium_rss_to_x(
             continue
 
         canon_url = item.get("canonical_openie_url")
+        norm_title = str(item.get("title", "")).strip().lower()
         if canon_url and canon_url in canonical_map:
             thread_bundle = update_x_bundle_medium_url(
                 canonical_map[canon_url], str(item["link"])
+            )
+            matched_study = thread_bundle["study_id"]
+        elif norm_title and norm_title in title_map:
+            thread_bundle = update_x_bundle_medium_url(
+                title_map[norm_title], str(item["link"])
             )
             matched_study = thread_bundle["study_id"]
         else:
@@ -1221,7 +1230,13 @@ def sync_medium_rss_to_x(
         if not dry_run:
             if x_client is None:
                 raise RuntimeError("x_client required when dry_run=False")
-            tweet_ids = x_client.post_thread(thread_bundle)
+            media_id: str | None = None
+            card_uri = thread_bundle.get("card_video_uri")
+            if card_uri and video_bytes_loader is not None:
+                v_bytes = video_bytes_loader(str(card_uri))
+                if v_bytes:
+                    media_id = x_client.upload_video_chunked(v_bytes)
+            tweet_ids = x_client.post_thread(thread_bundle, first_post_media_id=media_id)
             status_label = "published"
             remote_url = f"https://x.com/i/status/{tweet_ids[0]}"
 

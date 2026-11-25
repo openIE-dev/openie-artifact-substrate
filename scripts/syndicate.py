@@ -37,6 +37,7 @@ if str(REPO_ROOT / "python") not in sys.path:
 
 from openie_artifact.schema_validator import validate_openie_artifact
 from openie_syndicate import (
+    DEFAULT_MEDIUM_RSS_FEEDS,
     MediumClient,
     SyndicationLedger,
     TikTokClient,
@@ -502,12 +503,24 @@ def main(argv: list[str] | None = None) -> int:
         default=Path("syndication-ledger.json"),
         help="Path to idempotent BLAKE3 syndication ledger JSON",
     )
-    parser.add_argument("--rss-url", type=str, default=os.environ.get("MEDIUM_RSS_URL", ""))
+    parser.add_argument(
+        "--rss-url",
+        type=str,
+        default=os.environ.get("MEDIUM_RSS_URL", ",".join(DEFAULT_MEDIUM_RSS_FEEDS)),
+        help="Comma-separated Medium RSS URLs (defaults to open-interface-engineering & @openie)",
+    )
     parser.add_argument("--timeline-json", type=Path, help="Local X timeline/pulse JSON file")
+    parser.add_argument("--outbox", type=Path, help="Optional JSON outbox for staged RSS->X threads")
     parser.add_argument("--live", action="store_true", help="Disable dry-run and execute live HTTP calls")
+    parser.add_argument(
+        "--auto-live",
+        action="store_true",
+        help="Automatically switch to live posting when X OAuth 1.0a credentials are present in env",
+    )
 
     args = parser.parse_args(argv)
-    dry_run = not args.live
+    x_probe = XClient()
+    dry_run = not (args.live or (args.auto_live and x_probe.credentials.is_configured()))
 
     if args.mode == "stage":
         if not args.tv_catalog or not args.web_root:
@@ -550,14 +563,57 @@ def main(argv: list[str] | None = None) -> int:
         if not args.rss_url:
             parser.error("--mode sync-rss-to-x requires --rss-url or MEDIUM_RSS_URL")
         ledger = SyndicationLedger.load(args.ledger)
-        res = sync_medium_rss_to_x(
-            args.rss_url,
-            ledger=ledger,
-            x_client=XClient(),
-            dry_run=dry_run,
-        )
+        by_paper: dict[str, dict[str, Any]] = {}
+        by_title: dict[str, dict[str, Any]] = {}
+        if args.web_root:
+            cat_file = args.web_root / "src" / "data" / "syndication-catalog.json"
+            x_dir = args.web_root / "public" / "syndication" / "x"
+            if cat_file.is_file():
+                cat_doc = json.loads(cat_file.read_text(encoding="utf-8"))
+                for st in cat_doc.get("studies", []):
+                    xb_path = x_dir / f"{st['id']}.json"
+                    if xb_path.is_file():
+                        xb = json.loads(xb_path.read_text(encoding="utf-8"))
+                        canon = st.get("medium", {}).get("canonical_source_url", "")
+                        if canon:
+                            by_paper[canon] = xb
+                        by_title[str(st.get("title", "")).strip().lower()] = xb
+                        by_title[str(st.get("short_title", "")).strip().lower()] = xb
+
+        def _load_video_bytes(card_uri: str) -> bytes | None:
+            if not args.web_root:
+                return None
+            cand = args.web_root / "public" / card_uri.lstrip("/")
+            return cand.read_bytes() if cand.is_file() else None
+
+        feed_urls = [u.strip() for u in args.rss_url.split(",") if u.strip()]
+        all_res: list[dict[str, Any]] = []
+        for feed_u in feed_urls:
+            res = sync_medium_rss_to_x(
+                feed_u,
+                ledger=ledger,
+                x_bundles_by_paper_url=by_paper,
+                x_bundles_by_title=by_title,
+                video_bytes_loader=_load_video_bytes,
+                x_client=x_probe,
+                dry_run=dry_run,
+            )
+            all_res.extend(res)
         ledger.save(args.ledger)
-        print(json.dumps({"synced": len(res), "dry_run": dry_run}, indent=2))
+        if args.outbox:
+            args.outbox.parent.mkdir(parents=True, exist_ok=True)
+            args.outbox.write_text(json.dumps(all_res, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+        print(
+            json.dumps(
+                {
+                    "feeds_polled": feed_urls,
+                    "items_processed": len(all_res),
+                    "new_threads": sum(1 for r in all_res if r.get("status") != "skipped_duplicate"),
+                    "dry_run": dry_run,
+                },
+                indent=2,
+            )
+        )
         return 0
 
     if args.mode == "sync-x-to-medium":
