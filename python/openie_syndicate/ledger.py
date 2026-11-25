@@ -158,4 +158,7 @@ class SyndicationLedger:
     def load(cls, path: Path) -> SyndicationLedger:
         if not path.exists():
             return cls()
-        return cls.from_dict(json.loads(path.read_text(encoding="utf-8")))
+        raw = path.read_text(encoding="utf-8").strip()
+        if not raw:
+            return cls()
+        return cls.from_dict(json.loads(raw))

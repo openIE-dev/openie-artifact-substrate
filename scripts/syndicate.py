@@ -577,6 +577,13 @@ def main(argv: list[str] | None = None) -> int:
                         canon = st.get("medium", {}).get("canonical_source_url", "")
                         if canon:
                             by_paper[canon] = xb
+                        prim = st.get("medium", {}).get("primary_paper_url", "") or (
+                            f"https://research.openie.dev{st['paper_url']}" if st.get("paper_url") else ""
+                        )
+                        if prim:
+                            by_paper[prim if prim.endswith("/") else f"{prim}/"] = xb
+                        by_paper[f"https://blog.openie.dev/posts/{st['id']}/"] = xb
+                        by_paper[f"https://research.openie.dev/syndication/medium/{st['id']}/"] = xb
                         by_title[str(st.get("title", "")).strip().lower()] = xb
                         by_title[str(st.get("short_title", "")).strip().lower()] = xb
 

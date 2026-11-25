@@ -1040,7 +1040,8 @@ class MediumClient:
 
 _HTML_TAG_RE = re.compile(r"<[^>]+>")
 _CANONICAL_OPENIE_RE = re.compile(
-    r"https://research\.openie\.dev/(?:papers|products)/[a-z0-9_-]+/?", re.IGNORECASE
+    r"https://(?:blog\.openie\.dev/posts|research\.openie\.dev/(?:papers|products|syndication/medium))/[a-z0-9_-]+/?",
+    re.IGNORECASE,
 )
 
 
